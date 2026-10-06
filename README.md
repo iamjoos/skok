@@ -57,12 +57,14 @@ With an empty query, the current window is the top result, whether configured or
 
 | Key | Action |
 | --- | --- |
-| Up / Down, Ctrl + K / J, Ctrl + P / N | Move selection. |
-| Ctrl + 1..9 | Focus the numbered result. |
-| Enter | Focus the selected window. |
-| Esc | Cancel. |
+| Up / Down, Ctrl + K / J, Ctrl + P / N | Move selection and preview its window. |
+| Ctrl + 1..9 | Accept the numbered result. |
+| Enter | Accept the selected window. |
+| Esc | Cancel and return to the window where search started (the last focused window if started from the taskbar or desktop). |
 
-Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Search closes when it loses focus. Both overlays use the Windows accent color. Set `theme=system` (default), `theme=light` or `theme=dark` under `[settings]` to follow Windows' app light/dark preference or force a theme. System theme and accent changes are picked up when an overlay is next shown. Invalid theme values are reported at startup and fall back to `system`.
+The selected window is brought forward as you type or navigate, while the search box keeps keyboard focus. Previews count as one visit: after accepting, `super + Tab` returns to the starting window; cancelling leaves previous-window history unchanged. Restored minimized windows stay restored on cancel.
+
+Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Clicking another window closes search without returning to the starting window. Both overlays use the Windows accent color. Set `theme=system` (default), `theme=light` or `theme=dark` under `[settings]` to follow Windows' app light/dark preference or force a theme. System theme and accent changes are picked up when an overlay is next shown. Invalid theme values are reported at startup and fall back to `system`.
 
 ## Configuration
 

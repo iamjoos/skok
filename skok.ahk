@@ -1,8 +1,8 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
-#Include %A_ScriptDir%\window-theme.ahk
-#Include %A_ScriptDir%\cycle-strip.ahk
-#Include %A_ScriptDir%\window-search.ahk
+#Include %A_LineFile%\..\window-theme.ahk
+#Include %A_LineFile%\..\cycle-strip.ahk
+#Include %A_LineFile%\..\window-search.ahk
 
 ; Jump between windows from the keyboard (never moves or resizes them):
 ; - super + <key>: focus an app's most recently used window, otherwise launch it
@@ -73,6 +73,9 @@ unconfigured_cycle := []
 cycle_session := false
 cycle_origin := 0
 cycle_origin_previous := 0
+search_origin := 0
+search_origin_previous := 0
+search_current := 0
 InitializeWindowHistory()
 DllCall("RegisterShellHookWindow", "Ptr", A_ScriptHwnd)
 OnMessage(DllCall("RegisterWindowMessage", "Str", "SHELLHOOK", "UInt"), OnShellMessage)
@@ -220,7 +223,8 @@ InitializeWindowHistory() {
 }
 
 OnShellMessage(wParam, lParam, *) {
-    if (wParam = 4 || wParam = 0x8004)  ; HSHELL_WINDOWACTIVATED, HSHELL_RUDEAPPACTIVATED
+    ; Notifications can arrive late (e.g. search previews after cancel/accept); only track the window still active.
+    if ((wParam = 4 || wParam = 0x8004) && CycleableRoot(lParam) = GetActiveWindow())  ; HSHELL_WINDOWACTIVATED, HSHELL_RUDEAPPACTIVATED
         TrackActiveWindow(lParam)
 }
 
@@ -229,8 +233,13 @@ TrackActiveWindow(hwnd) {
     hwnd := CycleableRoot(hwnd)
     if (!hwnd || hwnd = current_window)
         return
-    ; Windows passed through while cycling are not picks; history is as if cycling started from the origin.
-    if cycle_session {
+    ; Search previews and cycling are one visit, not separate picks.
+    if WindowSearch.active {
+        if (hwnd = search_origin)
+            previous_window := search_origin_previous
+        else
+            previous_window := search_origin
+    } else if cycle_session {
         if (hwnd = cycle_origin)
             previous_window := cycle_origin_previous
         else
@@ -382,8 +391,15 @@ ConfiguredAppName(hwnd) {
 
 ; Keep active last for fuzzy-score ties; the picker puts it first when the query is empty.
 SearchWindows(*) {
+    global search_origin, search_origin_previous, search_current
+    if WindowSearch.active
+        return
     StopCycleSession()
     active := GetActiveWindow()
+    TrackActiveWindow(active)
+    search_origin := active
+    search_origin_previous := previous_window
+    search_current := current_window
     entries := []
     last := 0
     for _, hwnd in GetCycleableWindows("") {
@@ -398,7 +414,28 @@ SearchWindows(*) {
     }
     if last
         entries.Push(last)
-    WindowSearch.Show(entries, ActivateWindow)
+    ; Re-activating the taskbar or desktop would leave the last preview in front.
+    WindowSearch.Show(entries, ActivateSearchWindow, EndSearchSession, active ? 0 : search_current)
+}
+
+ActivateSearchWindow(hwnd) {
+    ActivateWindow(hwnd)
+    ; Update before the picker regains focus, even if the shell hook is delayed.
+    TrackActiveWindow(GetActiveWindow())
+}
+
+EndSearchSession(activated := 0, cancelled := false) {
+    global current_window, previous_window
+    ; A click outside accepts that external focus without adding previews to history.
+    ; WM_ACTIVATE supplies the destination before GetForegroundWindow necessarily changes.
+    target := cancelled ? 0 : activated ? CycleableRoot(activated) : GetActiveWindow()
+    if target {
+        TrackActiveWindow(target)
+        return
+    }
+    ; Nothing was accepted (e.g. cancelled from the desktop), so previews leave no trace.
+    current_window := search_current
+    previous_window := search_origin_previous
 }
 
 IsCloaked(hwnd) {

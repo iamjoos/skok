@@ -1,0 +1,180 @@
+#Requires AutoHotkey v2.0
+#Include ..\window-search.ahk
+
+Assert(condition, message) {
+    if !condition
+        throw Error(message)
+}
+
+Focus(hwnd) {
+    global visits, cancel_during_preview, change_during_finish, move_during_preview
+    if cancel_during_preview {
+        cancel_during_preview := false
+        ; The preview still activates its target after the cancellation request.
+        WindowSearch.Cancel(WindowSearch.window)
+    }
+    if move_during_preview {
+        move_during_preview := false
+        WindowSearch.Move(1)
+    }
+    if change_during_finish {
+        change_during_finish := false
+        WindowSearch.edit.Value := "third"
+        WindowSearch.Update()
+    }
+    if (WinGetMinMax(hwnd) = -1)
+        WinRestore(hwnd)
+    WinActivate(hwnd)
+    Assert(WinActive(hwnd), "Selected window did not receive focus")
+    visits.Push(hwnd)
+}
+
+AssertPicker() {
+    Assert(WindowSearch.active, "Preview dismissed search")
+    Assert(WinActive(WindowSearch.window), "Search did not regain keyboard focus")
+    Assert(ControlGetFocus(WindowSearch.window) = WindowSearch.edit.Hwnd, "Search edit lost focus")
+}
+
+origin := WinExist("A")
+windows := []
+visits := []
+cancel_during_preview := false
+change_during_finish := false
+move_during_preview := false
+exit_code := 0
+fixture_pid := 0
+try {
+    Loop 3 {
+        window := Gui(, "Search focus test " A_Index)
+        window.AddText(, "Window " A_Index)
+        window.Show("w240 h100")
+        windows.Push(window)
+    }
+    start := windows[1].Hwnd
+    second := windows[2].Hwnd
+    third := windows[3].Hwnd
+    entries := [
+        {hwnd: second, app: "Second", exe: "test", title: "Second", current: false},
+        {hwnd: third, app: "Third", exe: "test", title: "Third", current: false},
+        {hwnd: start, app: "Start", exe: "test", title: "Start", current: true}
+    ]
+    WinActivate(start)
+    WindowSearch.Show(entries, Focus)
+    Assert(!visits.Length, "Opening search re-activated the current window")
+    AssertPicker()
+
+    ; Navigation previews, wraps, and does not replace the saved origin on reopening.
+    WindowSearch.OnKeyDown(0x28, 0, 0, WindowSearch.edit.Hwnd)
+    Assert(visits[-1] = second, "Down did not preview the next window")
+    AssertPicker()
+    WindowSearch.Show(entries, Focus)
+    Assert(WindowSearch.origin = start, "Reopening replaced the origin")
+    WindowSearch.Move(-1)
+    WindowSearch.Move(-1)
+    Assert(visits[-1] = third, "Up did not wrap to the last window")
+    AssertPicker()
+
+    ; Query changes preview the new first match; no matches keep the picker usable.
+    WindowSearch.edit.Value := "second"
+    WindowSearch.Update()
+    Assert(visits[-1] = second, "Filtering did not preview its first match")
+    AssertPicker()
+    count := visits.Length
+    WindowSearch.Update()
+    Assert(visits.Length = count, "Unchanged selection was activated again")
+    WindowSearch.edit.Value := "no-such-window"
+    WindowSearch.Update()
+    WindowSearch.Move(1)
+    WindowSearch.Pick(0)
+    Assert(visits.Length = count, "Empty results activated a window")
+    AssertPicker()
+    ; Use a real key: the GUI dialog manager can consume Esc before WM_KEYDOWN.
+    SendEvent("{Esc}")
+    WinWaitNotActive(WindowSearch.window, , 2)
+    Assert(!WindowSearch.active && WinActive(start), "Esc did not restore the origin")
+
+    ; Accept keeps the preview, including restored minimized windows.
+    WinMinimize(second)
+    WindowSearch.Show(entries, Focus)
+    WindowSearch.Move(1)
+    Assert(WinGetMinMax(second) != -1, "Preview did not restore a minimized window")
+    AssertPicker()
+    WindowSearch.OnKeyDown(0x0D, 0, 0, WindowSearch.edit.Hwnd)
+    Assert(!WindowSearch.active && WinActive(second), "Enter did not accept the selection")
+
+    ; A selection change during a preview runs afterwards instead of overlapping it.
+    WinActivate(start)
+    WindowSearch.Show(entries, Focus)
+    move_during_preview := true
+    WindowSearch.Move(1)
+    Assert(visits[-2] = second && visits[-1] = third, "Selection change during a preview was not previewed last")
+    AssertPicker()
+    SendEvent("{Esc}")
+    WinWaitNotActive(WindowSearch.window, , 2)
+    Assert(!WindowSearch.active && WinActive(start), "Esc after overlapping previews did not restore the origin")
+
+    ; Cross-process previews must also cancel through actual keyboard input.
+    Run('"' A_AhkPath '" /ErrorStdOut "' A_ScriptDir '\window-search-fixture.ahk"', , , &fixture_pid)
+    external_origin := WinWait("Search fixture origin ahk_pid " fixture_pid, , 5)
+    external_preview := WinWait("Search fixture preview ahk_pid " fixture_pid, , 5)
+    Assert(external_origin && external_preview, "Fixture windows did not open")
+    external_entries := [
+        {hwnd: external_preview, app: "Preview", exe: "test", title: "Preview", current: false},
+        {hwnd: external_origin, app: "Origin", exe: "test", title: "Origin", current: true}
+    ]
+    WinActivate(external_origin)
+    WindowSearch.Show(external_entries, Focus)
+    WindowSearch.Move(1)
+    AssertPicker()
+    SendEvent("{Esc}")
+    WinWaitNotActive(WindowSearch.window, , 2)
+    Assert(!WindowSearch.active && WinActive(external_origin), "Cross-process Esc did not restore the origin")
+
+    ; A cancellation requested inside activation must win over its continuation.
+    WinActivate(start)
+    WindowSearch.Show(entries, Focus)
+    cancel_during_preview := true
+    WindowSearch.Move(1)
+    Assert(!WindowSearch.active && WinActive(start), "In-flight preview overrode cancellation")
+
+    ; Queued query updates must not start another preview while restoring the origin.
+    WindowSearch.Show(entries, Focus)
+    WindowSearch.Move(1)
+    change_during_finish := true
+    WindowSearch.Cancel(WindowSearch.window)
+    Assert(!WindowSearch.active && WinActive(start), "Query update overrode cancellation")
+
+    ; Native GUI close also uses the cancellation path rather than merely hiding.
+    WindowSearch.Show(entries, Focus)
+    WindowSearch.Move(1)
+    PostMessage(0x0010, 0, 0, , WindowSearch.window)  ; WM_CLOSE
+    WinWaitNotActive(WindowSearch.window, , 2)
+    Assert(!WindowSearch.active && WinActive(start), "Native close did not restore the origin")
+
+    ; External focus dismisses without snapping back; closed origins are safe to cancel.
+    WinActivate(start)
+    WindowSearch.Show(entries, Focus)
+    WinActivate(third)
+    Assert(!WindowSearch.active && WinActive(third), "External focus was not preserved")
+    WinActivate(start)
+    WindowSearch.Show(entries, Focus)
+    windows[1].Destroy()
+    WindowSearch.Cancel()
+    Assert(!WindowSearch.active, "Closed origin prevented cancellation")
+    FileAppend("Window search focus tests passed.`n", "*")
+} catch as err {
+    exit_code := 1
+    report := err.Message "`n" err.Stack "`n"
+    try FileAppend(report, "**")
+    catch
+        FileAppend(report, A_Temp "\skok-window-search-focus-error.log")
+} finally {
+    WindowSearch.Hide()
+    if (fixture_pid && ProcessExist(fixture_pid))
+        ProcessClose(fixture_pid)
+    for _, window in windows
+        try window.Destroy()
+    if (origin && WinExist(origin))
+        try WinActivate(origin)
+}
+ExitApp(exit_code)

@@ -20,11 +20,23 @@ class WindowSearch {
     static first := 1
     static origin := 0
     static on_pick := 0
+    static on_hide := 0
+    static active := false
+    static closing := false
+    static cancelled := false
+    static finish_target := 0
+    static previewing := false
+    static preview_pending := false
+    static preview := 0
 
-    static Show(entries, on_pick) {
+    static Show(entries, on_pick, on_hide := 0, origin := 0) {
+        ; Repeated search hotkeys must not replace the origin with the picker itself.
+        if this.active
+            return
         theme := WindowTheme.Refresh()
-        this.origin := WinExist("A")
-        if !WindowTheme.WorkArea(this.origin, &left, &top, &right, &bottom)
+        active := WinExist("A")
+        this.origin := origin || active
+        if !WindowTheme.WorkArea(active, &left, &top, &right, &bottom)
             return
         width := Min(WindowTheme.Scale(720), right - left - WindowTheme.Scale(32))
         ; Reserve room for the overflow footer even on short work areas.
@@ -37,44 +49,120 @@ class WindowSearch {
             entry.text := (entry.app != "" ? entry.app " " : "") entry.exe " " entry.title
         this.entries := entries
         this.on_pick := on_pick
+        this.on_hide := on_hide
+        this.closing := false
+        this.cancelled := false
+        this.preview_pending := false
+        this.finish_target := 0
         this.edit.Value := ""
         this.Update()
+        ; The current window is already in front; re-activating it would only flicker.
+        this.preview := this.selected && this.matches[this.selected].current ? this.matches[this.selected].hwnd : 0
+        this.active := true
         this.window.Show(WindowTheme.Placement(left, top, right, width) " h" this.height)
         WinActivate(this.window)
         this.edit.Focus()
     }
 
-    static Hide() {
+    static Hide(activated := 0) {
+        this.closing := true
+        if (this.active && this.on_hide)
+            this.on_hide.Call(activated, this.cancelled)
+        this.active := false
         if this.window
             this.window.Hide()
     }
 
-    static Cancel() {
-        if (this.origin && WinExist(this.origin))
-            try WinActivate(this.origin)
+    static Cancel(*) {
+        this.Finish(this.origin, true)
+    }
+
+    ; Latch the outcome before activation can yield to a queued edit/key event.
+    static Finish(hwnd, cancelled := false) {
+        if (!this.active || this.closing)
+            return
+        this.closing := true
+        this.cancelled := cancelled
+        this.finish_target := hwnd
+        ; Let an outstanding preview finish before restoring/accepting the target.
+        if !this.previewing
+            this.Complete()
+    }
+
+    static Complete() {
+        if (this.finish_target && WinExist(this.finish_target))
+            this.FocusWindow(this.finish_target)
         this.Hide()
     }
 
     ; Activating the pick before hiding keeps this process allowed to set the foreground window.
     static Pick(index) {
-        if (index < 1 || index > this.matches.Length)
+        if (!this.active || this.closing || index < 1 || index > this.matches.Length)
             return
-        this.on_pick.Call(this.matches[index].hwnd)
-        this.Hide()
+        this.Finish(this.matches[index].hwnd)
+    }
+
+    ; Bring the selection forward underneath the picker, then keep typing in the edit.
+    static PreviewSelection() {
+        if (!this.active || this.closing)
+            return
+        ; Key/edit events can interrupt activation; defer them so previews never overlap.
+        if this.previewing {
+            this.preview_pending := true
+            return
+        }
+        this.previewing := true
+        try {
+            Loop {
+                this.preview_pending := false
+                if (this.closing || !this.selected)
+                    break
+                hwnd := this.matches[this.selected].hwnd
+                if (hwnd = this.preview || !WinExist(hwnd))
+                    break
+                this.on_pick.Call(hwnd)
+                if this.closing
+                    break
+                this.preview := hwnd
+                WinActivate(this.window)
+                if this.closing
+                    break
+                this.edit.Focus()
+                if !this.preview_pending
+                    break
+            }
+        } finally {
+            this.previewing := false
+            if (this.active && this.closing)
+                this.Complete()
+        }
+    }
+
+    ; Internal activations must not be mistaken for clicking away from the picker.
+    static FocusWindow(hwnd) {
+        this.previewing := true
+        try this.on_pick.Call(hwnd)
+        finally this.previewing := false
     }
 
     static Move(direction) {
+        if (!this.active || this.closing)
+            return
         if !(count := this.matches.Length)
             return
         this.selected := Mod(this.selected - 1 + direction + count, count) + 1
         this.Render()
+        this.PreviewSelection()
     }
 
     static Update(*) {
+        if this.closing
+            return
         this.matches := this.Filter(this.entries, this.edit.Value)
         this.selected := this.matches.Length ? 1 : 0
         this.first := 1
         this.Render()
+        this.PreviewSelection()
     }
 
     static Render() {
@@ -121,7 +209,7 @@ class WindowSearch {
     }
 
     static OnKeyDown(vk, lParam, msg, hwnd) {
-        if !(this.edit && hwnd = this.edit.Hwnd)
+        if !(this.active && this.edit && hwnd = this.edit.Hwnd)
             return
         ctrl := GetKeyState("Ctrl")
         if (vk = 0x0D)                                        ; Enter
@@ -150,8 +238,8 @@ class WindowSearch {
     }
 
     static OnActivate(wParam, lParam, msg, hwnd) {
-        if (this.window && hwnd = this.window.Hwnd && !(wParam & 0xFFFF))  ; WA_INACTIVE
-            this.Hide()
+        if (this.active && !this.closing && !this.previewing && this.window && hwnd = this.window.Hwnd && !(wParam & 0xFFFF))  ; WA_INACTIVE
+            this.Hide(lParam)
     }
 
     ; Empty queries put the current window first, then configured windows; otherwise use stable score ties.
@@ -252,6 +340,9 @@ class WindowSearch {
         }
         ; Not cycleable (tool window), so opening the picker leaves the window history alone.
         this.window := Gui("+AlwaysOnTop -Caption +ToolWindow -DPIScale", "skok window search")
+        ; Dialog processing can consume Esc without delivering WM_KEYDOWN to the edit.
+        this.window.OnEvent("Escape", ObjBindMethod(this, "Cancel"))
+        this.window.OnEvent("Close", ObjBindMethod(this, "Cancel"))
         WindowTheme.Frame(this.window.Hwnd)
         this.window.BackColor := WindowTheme.background
         s := ObjBindMethod(WindowTheme, "Scale")
