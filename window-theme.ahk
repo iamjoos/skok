@@ -2,6 +2,7 @@
 
 ; Shared visual style and layout helpers for the cycle strip and window-search picker.
 class WindowTheme {
+    static mode := "system"
     ; Colors are set by Refresh().
     static background := ""
     static selected_background := ""
@@ -14,9 +15,17 @@ class WindowTheme {
     static row_font_size := 10
     static search_font_size := 12
 
-    ; Read Windows' app light/dark preference and DWM accent each time a picker is shown.
+    static SetMode(mode) {
+        if !RegExMatch(mode, "i)^(system|light|dark)$")
+            throw ValueError("Invalid theme '" mode "': use system, light or dark.")
+        this.mode := StrLower(mode)
+    }
+
+    ; Resolve the chosen theme and read the DWM accent each time a picker is shown.
     static Refresh() {
-        light := RegRead("HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1) != 0
+        light := this.mode = "system"
+            ? RegRead("HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1) != 0
+            : this.mode = "light"
         ; AccentColor is 0xAABBGGRR like a COLORREF; DwmGetColorizationColor would be 0xAARRGGBB.
         accent := RegRead("HKCU\Software\Microsoft\Windows\DWM", "AccentColor", "")
         if (accent = "")

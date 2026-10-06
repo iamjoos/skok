@@ -47,6 +47,10 @@ else {
     show_cycle_titles := true
 }
 
+try WindowTheme.SetMode(settings.Get("theme", "system"))
+catch as err
+    errors.Push(err.Message)
+
 super_prefix := modifier_prefixes.Get(StrLower(super_key), "")
 super_valid := super_prefix != ""
 if !super_valid {

@@ -62,7 +62,7 @@ With an empty query, the current window is the top result, whether configured or
 | Enter | Focus the selected window. |
 | Esc | Cancel. |
 
-Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Search closes when it loses focus. Both overlays follow Windows' light/dark mode and accent color.
+Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Search closes when it loses focus. Both overlays use the Windows accent color. Set `theme=system` (default), `theme=light` or `theme=dark` under `[settings]` to follow Windows' app light/dark preference or force a theme. System theme and accent changes are picked up when an overlay is next shown. Invalid theme values are reported at startup and fall back to `system`.
 
 ## Configuration
 
@@ -80,6 +80,7 @@ close_window_hotkey=Backspace
 search_windows_hotkey=/
 new_instance_modifier=Shift
 show_cycle_titles=1
+theme=system
 
 [app.vscode]
 hotkey=v
