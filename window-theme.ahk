@@ -55,6 +55,20 @@ class WindowTheme {
     ; Layout is in physical pixels (-DPIScale) to match monitor work areas, but fonts still scale with DPI.
     static Scale(n) => Round(n * A_ScreenDPI / 96)
 
+    static row_pitch => this.Scale(32)
+
+    ; Popup width capped by the work area, leaving a margin on both sides.
+    static PopupWidth(max_width, left, right) => Min(this.Scale(max_width), right - left - this.Scale(32))
+
+    ; Tool windows are not cycleable, so showing a popup leaves the window history alone.
+    static NewPopup(title, options, font_size) {
+        popup := Gui("+AlwaysOnTop -Caption +ToolWindow -DPIScale " options, title)
+        this.Frame(popup.Hwnd)
+        popup.BackColor := this.background
+        popup.SetFont("s" font_size " c" this.text, this.font_face)
+        return popup
+    }
+
     ; Window position options: centered horizontally, just below the top of the work area.
     static Placement(left, top, right, width) => "x" (left + Floor((right - left - width) / 2)) " y" (top + this.Scale(16)) " w" width
 

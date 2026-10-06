@@ -1,10 +1,6 @@
 #Requires AutoHotkey v2.0
 #Include ..\window-search.ahk
-
-Assert(condition, message) {
-    if !condition
-        throw Error(message)
-}
+#Include lib.ahk
 
 Focus(hwnd) {
     global visits, cancel_during_preview, change_during_finish, move_during_preview
@@ -44,12 +40,7 @@ move_during_preview := false
 exit_code := 0
 fixture_pid := 0
 try {
-    Loop 3 {
-        window := Gui(, "Search focus test " A_Index)
-        window.AddText(, "Window " A_Index)
-        window.Show("w240 h100")
-        windows.Push(window)
-    }
+    AddTestWindows(windows, "Search focus test", 3)
     start := windows[1].Hwnd
     second := windows[2].Hwnd
     third := windows[3].Hwnd
@@ -95,9 +86,7 @@ try {
     WindowSearch.Pick(0)
     Assert(visits.Length = count, "Empty results activated a window")
     AssertPicker()
-    ; Use a real key: the GUI dialog manager can consume Esc before WM_KEYDOWN.
-    SendEvent("{Esc}")
-    WinWaitNotActive(WindowSearch.window, , 2)
+    PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(start), "Esc did not restore the origin")
 
     ; Accept keeps the preview, including restored minimized windows.
@@ -116,8 +105,7 @@ try {
     WindowSearch.Move(1)
     Assert(visits[-2] = second && visits[-1] = third, "Selection change during a preview was not previewed last")
     AssertPicker()
-    SendEvent("{Esc}")
-    WinWaitNotActive(WindowSearch.window, , 2)
+    PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(start), "Esc after overlapping previews did not restore the origin")
 
     ; Cross-process previews must also cancel through actual keyboard input.
@@ -133,8 +121,7 @@ try {
     WindowSearch.Show(external_entries, Focus)
     WindowSearch.Move(1)
     AssertPicker()
-    SendEvent("{Esc}")
-    WinWaitNotActive(WindowSearch.window, , 2)
+    PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(external_origin), "Cross-process Esc did not restore the origin")
 
     ; A cancellation requested inside activation must win over its continuation.
@@ -172,8 +159,7 @@ try {
     WinActivate(start)
     WindowSearch.Show(entries, Focus)
     WindowSearch.Move(1)
-    SendEvent("{Esc}")
-    WinWaitNotActive(WindowSearch.window, , 2)
+    PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(start), "Esc without previews did not restore the origin")
     WindowSearch.previews := true
 
@@ -190,10 +176,7 @@ try {
     FileAppend("Window search focus tests passed.`n", "*")
 } catch as err {
     exit_code := 1
-    report := err.Message "`n" err.Stack "`n"
-    try FileAppend(report, "**")
-    catch
-        FileAppend(report, A_Temp "\skok-window-search-focus-error.log")
+    ReportError(err, "window-search-focus")
 } finally {
     WindowSearch.Hide()
     if (fixture_pid && ProcessExist(fixture_pid))

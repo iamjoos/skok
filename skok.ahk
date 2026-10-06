@@ -53,7 +53,7 @@ if !super_valid {
             throw ValueError("Unknown key name.")
         Hotkey("*" super_key, (*) => "")
         super_valid := true
-        if (StrLower(super_key) = "capslock")
+        if (super_key = "capslock")
             SetCapsLockState("AlwaysOff")
     } catch as err {
         errors.Push("Invalid super_key '" super_key "': " err.Message)
@@ -121,8 +121,7 @@ A_TrayMenu.Add("Edit config", (*) => Run('notepad.exe "' config_path '"'))
 
 ; Reads an INI file as UTF-8 (or UTF-16 with BOM), keeping quotes in values.
 ReadConfig(path, errors) {
-    sections := Map()
-    sections.CaseSense := "Off"
+    sections := CaselessMap()
     keys := 0
     Loop Parse FileRead(path, "UTF-8"), "`n", "`r" {
         line := Trim(A_LoopField)
@@ -130,10 +129,8 @@ ReadConfig(path, errors) {
             continue
         if RegExMatch(line, "^\[(.*)\]\s*(;.*)?$", &m) {
             name := Trim(m[1])
-            if !sections.Has(name) {
-                sections[name] := Map()
-                sections[name].CaseSense := "Off"
-            }
+            if !sections.Has(name)
+                sections[name] := CaselessMap()
             keys := sections[name]
         } else if (keys && (eq := InStr(line, "="))) {
             keys[Trim(SubStr(line, 1, eq - 1))] := Trim(SubStr(line, eq + 1))
@@ -145,6 +142,12 @@ ReadConfig(path, errors) {
         }
     }
     return sections
+}
+
+CaselessMap() {
+    m := Map()
+    m.CaseSense := "Off"
+    return m
 }
 
 BoolSetting(settings, name, default, errors) {
@@ -200,7 +203,7 @@ HotkeyId(key, &mods := "", &name := "") {
 }
 
 IsSuperPressed(*) {
-    if (StrLower(super_key) = "win")
+    if (super_key = "win")
         return GetKeyState("LWin", "P") || GetKeyState("RWin", "P")
     return GetKeyState(super_key, "P")
 }
@@ -213,6 +216,8 @@ IndexOf(items, value) {
     return 0
 }
 
+WrapIndex(index, step, count) => Mod(index - 1 + step + count, count) + 1
+
 InitializeWindowHistory() {
     global current_window, previous_window
     current_window := GetActiveWindow()
@@ -221,7 +226,7 @@ InitializeWindowHistory() {
     hwnds := GetCycleableWindows("")
     if (index := IndexOf(hwnds, current_window)) {
         if (hwnds.Length > 1)
-            previous_window := hwnds[Mod(index, hwnds.Length) + 1]
+            previous_window := hwnds[WrapIndex(index, 1, hwnds.Length)]
     } else if hwnds.Length {
         previous_window := hwnds[1]
     }
@@ -239,16 +244,10 @@ TrackActiveWindow(hwnd) {
     if (!hwnd || hwnd = current_window)
         return
     ; Search previews and cycling are one visit, not separate picks.
-    if WindowSearch.active {
-        if (hwnd = search_origin)
-            previous_window := search_origin_previous
-        else
-            previous_window := search_origin
-    } else if cycle_session {
-        if (hwnd = cycle_origin)
-            previous_window := cycle_origin_previous
-        else
-            previous_window := cycle_origin
+    if (WindowSearch.active || cycle_session) {
+        origin := WindowSearch.active ? search_origin : cycle_origin
+        origin_previous := WindowSearch.active ? search_origin_previous : cycle_origin_previous
+        previous_window := hwnd = origin ? origin_previous : origin
     } else {
         previous_window := current_window
     }
@@ -268,10 +267,14 @@ GetActiveWindow() {
     return 0
 }
 
+; Account for an activation the shell hook has not delivered yet.
+SyncActiveWindow() {
+    TrackActiveWindow(active := GetActiveWindow())
+    return active
+}
+
 SwitchToPreviousWindow(*) {
-    active := GetActiveWindow()
-    ; Account for an activation the shell hook has not delivered yet.
-    TrackActiveWindow(active)
+    active := SyncActiveWindow()
     StopCycleSession()
 
     target := previous_window
@@ -296,7 +299,7 @@ FocusOrRun(win_title, run_cmd, run_dir, *) {
         LaunchApp(run_cmd, run_dir)
         return
     }
-    active := GetActiveWindow()
+    active := SyncActiveWindow()
     if IndexOf(hwnds, active) {
         BeginCycleSession(active)
         ActivateNextWindow(SortNumeric(hwnds), active, 1)
@@ -316,7 +319,7 @@ LaunchApp(run_cmd, run_dir, *) {
 }
 
 CycleCurrentApp(direction, *) {
-    if !(active := GetActiveWindow())
+    if !(active := SyncActiveWindow())
         return
     try exe := WinGetProcessName(active)
     catch
@@ -334,8 +337,6 @@ BeginCycleSession(active) {
     global cycle_session, cycle_origin, cycle_origin_previous
     if cycle_session
         return
-    ; Account for an activation the shell hook has not delivered yet.
-    TrackActiveWindow(active)
     cycle_session := true
     cycle_origin := active
     cycle_origin_previous := previous_window
@@ -359,7 +360,7 @@ StopCycleSession() {
 ; The unconfigured-only list is fixed on the first press of a session.
 CycleUnconfigured(direction, *) {
     global unconfigured_cycle
-    active := GetActiveWindow()
+    active := SyncActiveWindow()
     if !unconfigured_cycle.Length {
         list := GetUnconfiguredWindows()
         if (!list.Length || (list.Length = 1 && list[1] = active))
@@ -400,8 +401,7 @@ SearchWindows(*) {
     if WindowSearch.active
         return
     StopCycleSession()
-    active := GetActiveWindow()
-    TrackActiveWindow(active)
+    active := SyncActiveWindow()
     search_origin := active
     search_origin_previous := previous_window
     search_current := current_window
@@ -468,7 +468,7 @@ ActivateNextWindow(hwnds, active, direction) {
     if (current_index = 0)
         next_index := direction > 0 ? 1 : hwnds.Length
     else
-        next_index := Mod(current_index - 1 + direction + hwnds.Length, hwnds.Length) + 1
+        next_index := WrapIndex(current_index, direction, hwnds.Length)
     ActivateWindow(hwnds[next_index])
     ; The release timer could otherwise end the session between this check and showing the strip.
     Critical

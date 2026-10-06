@@ -1,9 +1,5 @@
 #Requires AutoHotkey v2.0
-
-Assert(condition, message) {
-    if !condition
-        throw Error(message)
-}
+#Include lib.ahk
 
 original := WinExist("A")
 windows := []
@@ -15,11 +11,7 @@ search_origin_previous := 0
 search_current := 0
 exit_code := 0
 try {
-    Loop 3 {
-        window := Gui(, "Search history test " A_Index)
-        window.Show("w240 h100")
-        windows.Push(window)
-    }
+    AddTestWindows(windows, "Search history test", 3)
     origin := windows[1].Hwnd
     prior := windows[2].Hwnd
     preview := windows[3].Hwnd
@@ -36,8 +28,7 @@ try {
     WindowSearch.Show(entries, ActivateSearchWindow, EndSearchSession)
     WindowSearch.Move(1)
     Assert(current_window = preview && previous_window = origin, "Preview history lost the origin")
-    SendEvent("{Esc}")
-    WinWaitNotActive(WindowSearch.window, , 2)
+    PressEsc(WindowSearch.window)
     Assert(current_window = origin && previous_window = prior, "Cancel did not restore history")
     ; A queued preview event must not resurrect a cancelled visit.
     OnShellMessage(4, preview)
@@ -78,17 +69,13 @@ try {
     WindowSearch.Show(tool_entries, ActivateSearchWindow, EndSearchSession, search_current)
     WindowSearch.Move(1)
     Assert(current_window = preview, "Preview from a non-cycleable origin was not tracked")
-    SendEvent("{Esc}")
-    WinWaitNotActive(WindowSearch.window, , 2)
+    PressEsc(WindowSearch.window)
     Assert(WinActive(origin), "Cancel did not return to the last focused window")
     Assert(current_window = origin && previous_window = prior, "Cancel from a non-cycleable origin changed history")
     FileAppend("Window search history tests passed.`n", "*")
 } catch as err {
     exit_code := 1
-    report := err.Message "`n" err.Stack "`n"
-    try FileAppend(report, "**")
-    catch
-        FileAppend(report, A_Temp "\skok-window-search-history-error.log")
+    ReportError(err, "window-search-history")
 } finally {
     WindowSearch.Hide()
     for _, window in windows

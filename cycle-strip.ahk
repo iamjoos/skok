@@ -17,8 +17,8 @@ class CycleStrip {
             return
         }
         theme := WindowTheme.Refresh()
-        width := Min(WindowTheme.Scale(640), right - left - WindowTheme.Scale(32))
-        pitch := WindowTheme.Scale(32)
+        width := WindowTheme.PopupWidth(640, left, right)
+        pitch := WindowTheme.row_pitch
         capacity := Max(1, Floor((bottom - top - WindowTheme.Scale(44)) / pitch))
         ; The window background is only set at build time.
         if (this.size != width ":" capacity ":" theme)
@@ -61,19 +61,16 @@ class CycleStrip {
         if this.window
             this.window.Destroy()
         ; WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT: never focused; clicks pass through.
-        this.window := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08080020 -DPIScale", "skok window titles")
+        this.window := WindowTheme.NewPopup("skok window titles", "+E0x08080020", WindowTheme.row_font_size)
         ; A layered window stays invisible until its opacity is set.
         DllCall("SetLayeredWindowAttributes", "Ptr", this.window.Hwnd, "UInt", 0, "UChar", 255, "UInt", 2)
-        WindowTheme.Frame(this.window.Hwnd)
-        this.window.BackColor := WindowTheme.background
-        this.window.SetFont("s" WindowTheme.row_font_size " c" WindowTheme.text, WindowTheme.font_face)
         s := ObjBindMethod(WindowTheme, "Scale")
         this.numbers := []
         this.titles := []
         this.selected_row := 0
         ; A fixed number column keeps the bold index from shifting the title.
         Loop row_count {
-            y := s(8) + (A_Index - 1) * s(32)
+            y := s(8) + (A_Index - 1) * WindowTheme.row_pitch
             this.numbers.Push(WindowTheme.AddNumberCell(this.window, y))
             this.titles.Push(WindowTheme.AddTextCell(this.window, s(48), y, width - s(56)))
         }

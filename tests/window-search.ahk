@@ -1,8 +1,11 @@
 #Requires AutoHotkey v2.0
 #Include ..\window-search.ahk
+#Include lib.ahk
 
 Entry(hwnd, app, current := false, text := "same") {
-    return {hwnd: hwnd, app: app, current: current, text: text}
+    entry := {hwnd: hwnd, app: app, current: current, exe: "", title: text}
+    WindowSearch.Prepare(entry)
+    return entry
 }
 
 AssertOrder(entries, query, expected) {
@@ -28,9 +31,13 @@ try {
     AssertOrder([Entry(1, "", true)], "", [1])
     AssertOrder([], "", [])
     AssertOrder([Entry(1, "app", false, "needle"), Entry(2, "", true, "other")], "needle", [1])
+    ; The prefilter must reject an out-of-order or overlong term, but keep gapped and multi-term matches.
+    AssertOrder([Entry(1, "", false, "ab"), Entry(2, "", false, "ba")], "abb", [])
+    AssertOrder([Entry(1, "", false, "a-x-b"), Entry(2, "", false, "ba")], "ab", [1])
+    AssertOrder([Entry(1, "vscode", false, "README.md"), Entry(2, "", false, "vscode")], "rdm vscode", [1])
     FileAppend("Window search tests passed.`n", "*")
     ExitApp(0)
 } catch as err {
-    FileAppend(err.Message "`n", "**")
+    ReportError(err, "window-search")
     ExitApp(1)
 }

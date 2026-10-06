@@ -39,15 +39,15 @@ class WindowSearch {
         this.origin := origin || active
         if !WindowTheme.WorkArea(active, &left, &top, &right, &bottom)
             return
-        width := Min(WindowTheme.Scale(720), right - left - WindowTheme.Scale(32))
+        width := WindowTheme.PopupWidth(720, left, right)
         ; Reserve room for the overflow footer even on short work areas.
-        capacity := Max(1, Min(20, Floor((bottom - top - WindowTheme.Scale(120)) / WindowTheme.Scale(32))))
+        capacity := Max(1, Min(20, Floor((bottom - top - WindowTheme.Scale(120)) / WindowTheme.row_pitch)))
         ; Window, panel and edit colors are only set at build time.
         if (this.size != width ":" capacity ":" theme)
             this.Build(width, capacity, theme)
 
         for _, entry in entries
-            entry.text := (entry.app != "" ? entry.app " " : "") entry.exe " " entry.title
+            this.Prepare(entry)
         this.entries := entries
         this.on_pick := on_pick
         this.on_hide := on_hide
@@ -188,7 +188,7 @@ class WindowSearch {
             this.Style(A_Index, index = this.selected, entry.app != "")
         }
         ; Rows past the matches are clipped by the window height.
-        this.height := this.rows_top + rows * WindowTheme.Scale(32) + (rows ? WindowTheme.Scale(4) : 0)
+        height := this.rows_top + rows * WindowTheme.row_pitch + (rows ? WindowTheme.Scale(4) : 0)
         if (this.matches.Length > rows) {
             above := this.first - 1
             last := this.first + rows - 1
@@ -197,12 +197,16 @@ class WindowSearch {
                 . this.first "–" last " of " this.matches.Length
                 . (below ? "   ·   ↓ " below " below" : "")
             this.overflow.Visible := true
-            this.height += WindowTheme.Scale(24)
+            height += WindowTheme.Scale(24)
         } else {
             this.overflow.Visible := false
             this.overflow.Text := ""
         }
-        WinMove(, , , this.height, this.window)
+        ; Show applies the height itself, so an unchanged height needs no resize.
+        if (height != this.height) {
+            this.height := height
+            WinMove(, , , height, this.window)
+        }
     }
 
     ; Restyling only changed rows avoids flicker while typing.
@@ -266,8 +270,13 @@ class WindowSearch {
             return matches
         }
         matches := [], scores := []
+        terms := []
+        for _, term in StrSplit(StrLower(query), " ") {
+            if (term != "")
+                terms.Push(term)
+        }
         for _, entry in entries {
-            score := this.Score(query, entry.text)
+            score := this.Score(terms, entry)
             if (score < 0)
                 continue
             i := scores.Length
@@ -279,26 +288,40 @@ class WindowSearch {
         return matches
     }
 
-    ; Space-separated terms must all match, in any order; -1 if one doesn't.
-    static Score(query, text) {
-        chars := StrSplit(StrLower(text))
-        bonus := []
+    ; Entries are rescored on every keystroke, so derive their search text once.
+    static Prepare(entry) {
+        text := (entry.app != "" ? entry.app " " : "") entry.exe " " entry.title
+        entry.lower := StrLower(text)
+        entry.chars := StrSplit(entry.lower)
+        entry.bonus := []
         prev := ""
         ; Word starts follow a non-alphanumeric character or a lower-to-upper case change.
         Loop Parse text {
-            bonus.Push(prev = "" || !IsAlnum(prev, "Locale") || IsLower(prev, "Locale") && IsUpper(A_LoopField, "Locale") ? 8 : 0)
+            entry.bonus.Push(prev = "" || !IsAlnum(prev, "Locale") || IsLower(prev, "Locale") && IsUpper(A_LoopField, "Locale") ? 8 : 0)
             prev := A_LoopField
         }
-        total := 0
-        for _, term in StrSplit(StrLower(query), " ") {
-            if (term = "")
-                continue
-            score := this.ScoreTerm(term, chars, bonus)
-            if (score < 0)
+    }
+
+    ; Lowercase terms must all match, in any order; -1 if one doesn't.
+    static Score(terms, entry) {
+        ; Cheap in-order check first; most entries fail it and skip the alignment.
+        for _, term in terms {
+            if !this.IsSubsequence(term, entry.lower)
                 return -1
-            total += score
         }
+        total := 0
+        for _, term in terms
+            total += this.ScoreTerm(term, entry.chars, entry.bonus)
         return total
+    }
+
+    static IsSubsequence(term, text) {
+        pos := 0
+        Loop Parse term {
+            if !(pos := InStr(text, A_LoopField, false, pos + 1))
+                return false
+        }
+        return true
     }
 
     ; Best in-order alignment of the term's characters (fzf-like): word starts and runs
@@ -346,15 +369,11 @@ class WindowSearch {
             OnMessage(0x0100, ObjBindMethod(this, "OnKeyDown"))   ; WM_KEYDOWN
             OnMessage(0x0006, ObjBindMethod(this, "OnActivate"))  ; WM_ACTIVATE
         }
-        ; Not cycleable (tool window), so opening the picker leaves the window history alone.
-        this.window := Gui("+AlwaysOnTop -Caption +ToolWindow -DPIScale", "skok window search")
+        this.window := WindowTheme.NewPopup("skok window search", "", WindowTheme.search_font_size)
         ; Dialog processing can consume Esc without delivering WM_KEYDOWN to the edit.
         this.window.OnEvent("Escape", ObjBindMethod(this, "Cancel"))
         this.window.OnEvent("Close", ObjBindMethod(this, "Cancel"))
-        WindowTheme.Frame(this.window.Hwnd)
-        this.window.BackColor := WindowTheme.background
         s := ObjBindMethod(WindowTheme, "Scale")
-        this.window.SetFont("s" WindowTheme.search_font_size " c" WindowTheme.text, WindowTheme.font_face)
         ; A single-line Edit draws text at its top, so a one-line-high Edit sits centered on a taller panel.
         panel := this.window.AddText("x" s(8) " y" s(8) " w" (width - s(16)) " +0x4000000 +Background" WindowTheme.panel_background, " ")  ; WS_CLIPSIBLINGS
         panel.GetPos(, , , &line_h)
@@ -370,14 +389,14 @@ class WindowSearch {
         this.window.SetFont("s" WindowTheme.row_font_size " norm c" WindowTheme.text, WindowTheme.font_face)
         this.numbers := [], this.labels := [], this.titles := [], this.styles := []
         Loop capacity {
-            y := this.rows_top + (A_Index - 1) * s(32)
+            y := this.rows_top + (A_Index - 1) * WindowTheme.row_pitch
             this.numbers.Push(WindowTheme.AddNumberCell(this.window, y))
             this.labels.Push(WindowTheme.AddTextCell(this.window, s(48), y, s(120)))
             this.titles.Push(WindowTheme.AddTextCell(this.window, s(168), y, width - s(176)))
             this.styles.Push("")
         }
         this.window.SetFont("norm c" WindowTheme.unconfigured_text)
-        this.overflow := this.window.AddText("x" s(8) " y" (this.rows_top + capacity * s(32))
+        this.overflow := this.window.AddText("x" s(8) " y" (this.rows_top + capacity * WindowTheme.row_pitch)
             . " w" (width - s(16)) " h" s(24) " +0x281 +Hidden +Background" WindowTheme.background, "")
         this.size := width ":" capacity ":" theme
         this.capacity := capacity

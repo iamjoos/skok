@@ -1,10 +1,6 @@
 #Requires AutoHotkey v2.0
 #Include ..\window-theme.ahk
-
-AssertEqual(actual, expected) {
-    if (actual != expected)
-        throw Error("Expected '" expected "', got '" actual "'.")
-}
+#Include lib.ahk
 
 try {
     AssertEqual(WindowTheme.mode, "system")
@@ -49,6 +45,6 @@ try {
     FileAppend("Window theme tests passed.`n", "*")
     ExitApp(0)
 } catch as err {
-    FileAppend(err.Message "`n", "**")
+    ReportError(err, "window-theme")
     ExitApp(1)
 }
