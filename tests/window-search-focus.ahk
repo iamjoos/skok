@@ -74,6 +74,13 @@ try {
     Assert(visits[-1] = third, "Up did not wrap to the last window")
     AssertPicker()
 
+    ; Regaining focus after a preview must not select the query for the next key to replace.
+    SendEvent("sec")
+    Assert(WindowSearch.edit.Value = "sec", "Typing across previews replaced the query: " WindowSearch.edit.Value)
+    Assert(visits[-1] = second, "Typing did not preview its first match")
+    Assert(SendMessage(0xB0, 0, 0, WindowSearch.edit) = (3 | 3 << 16), "Preview left the query selected")  ; EM_GETSEL
+    AssertPicker()
+
     ; Query changes preview the new first match; no matches keep the picker usable.
     WindowSearch.edit.Value := "second"
     WindowSearch.Update()
@@ -150,6 +157,25 @@ try {
     PostMessage(0x0010, 0, 0, , WindowSearch.window)  ; WM_CLOSE
     WinWaitNotActive(WindowSearch.window, , 2)
     Assert(!WindowSearch.active && WinActive(start), "Native close did not restore the origin")
+
+    ; Disabled previews keep the picker in front until a window is accepted.
+    WindowSearch.previews := false
+    WinActivate(start)
+    WindowSearch.Show(entries, Focus)
+    count := visits.Length
+    WindowSearch.Move(1)
+    SendEvent("th")
+    Assert(visits.Length = count, "Disabled previews activated a window")
+    AssertPicker()
+    WindowSearch.OnKeyDown(0x0D, 0, 0, WindowSearch.edit.Hwnd)
+    Assert(!WindowSearch.active && WinActive(third), "Enter without previews did not accept the selection")
+    WinActivate(start)
+    WindowSearch.Show(entries, Focus)
+    WindowSearch.Move(1)
+    SendEvent("{Esc}")
+    WinWaitNotActive(WindowSearch.window, , 2)
+    Assert(!WindowSearch.active && WinActive(start), "Esc without previews did not restore the origin")
+    WindowSearch.previews := true
 
     ; External focus dismisses without snapping back; closed origins are safe to cancel.
     WinActivate(start)

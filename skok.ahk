@@ -37,15 +37,8 @@ modifier_prefixes := Map("alt", "!", "lalt", "<!", "ralt", ">!"
 super_key := settings.Get("super_key", "CapsLock")
 new_instance_modifier := settings.Get("new_instance_modifier", "Shift")
 new_instance_modifier := modifier_prefixes.Get(StrLower(new_instance_modifier), new_instance_modifier)
-show_cycle_titles := settings.Get("show_cycle_titles", "1")
-if RegExMatch(show_cycle_titles, "i)^(1|true|yes|on)$")
-    show_cycle_titles := true
-else if RegExMatch(show_cycle_titles, "i)^(0|false|no|off)$")
-    show_cycle_titles := false
-else {
-    errors.Push("Invalid show_cycle_titles '" show_cycle_titles "': use 1/0, true/false, yes/no or on/off.")
-    show_cycle_titles := true
-}
+show_cycle_titles := BoolSetting(settings, "show_cycle_titles", true, errors)
+WindowSearch.previews := BoolSetting(settings, "preview_search_selection", true, errors)
 
 try WindowTheme.SetMode(settings.Get("theme", "system"))
 catch as err
@@ -152,6 +145,18 @@ ReadConfig(path, errors) {
         }
     }
     return sections
+}
+
+BoolSetting(settings, name, default, errors) {
+    if !settings.Has(name)
+        return default
+    value := settings[name]
+    if RegExMatch(value, "i)^(1|true|yes|on)$")
+        return true
+    if RegExMatch(value, "i)^(0|false|no|off)$")
+        return false
+    errors.Push("Invalid " name " '" value "': use 1/0, true/false, yes/no or on/off.")
+    return default
 }
 
 RegisterHotkey(key, callback, owner, used_hotkeys, errors) {

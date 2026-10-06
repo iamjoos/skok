@@ -28,6 +28,7 @@ class WindowSearch {
     static previewing := false
     static preview_pending := false
     static preview := 0
+    static previews := true
 
     static Show(entries, on_pick, on_hide := 0, origin := 0) {
         ; Repeated search hotkeys must not replace the origin with the picker itself.
@@ -104,7 +105,7 @@ class WindowSearch {
 
     ; Bring the selection forward underneath the picker, then keep typing in the edit.
     static PreviewSelection() {
-        if (!this.active || this.closing)
+        if (!this.previews || !this.active || this.closing)
             return
         ; Key/edit events can interrupt activation; defer them so previews never overlap.
         if this.previewing {
@@ -124,10 +125,17 @@ class WindowSearch {
                 if this.closing
                     break
                 this.preview := hwnd
-                WinActivate(this.window)
+                ; Dialog focus selects all edit text; keep the caret so the next key doesn't replace the query.
+                selection := SendMessage(0xB0, 0, 0, this.edit)  ; EM_GETSEL
+                ; No WinDelay: pumping keys while the text is selected would replace it.
+                delay := A_WinDelay
+                SetWinDelay(-1)
+                try WinActivate(this.window)
+                finally SetWinDelay(delay)
                 if this.closing
                     break
                 this.edit.Focus()
+                SendMessage(0xB1, selection & 0xFFFF, selection >> 16, this.edit)  ; EM_SETSEL
                 if !this.preview_pending
                     break
             }
