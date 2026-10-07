@@ -124,6 +124,14 @@ new_instance_run="C:\Program Files\Mozilla Firefox\firefox.exe" -new-window
 
 Use AutoHotkey's **Window Spy** to find an app's executable; prefer `ahk_exe` over document titles. Pick unused keys, don't duplicate section names, and avoid overlapping `match` values: each matching section registers its own shortcuts, with no priority. Comments must be on their own line; a `;` after a value is part of the value.
 
+A `[send.<name>]` section sends keystrokes instead, which is useful for apps that open fastest through their own global shortcut. `hotkey` is pressed with `super`; `keys` uses AHK [Send](https://www.autohotkey.com/docs/v2/lib/Send.htm) syntax (`#` Win, `!` Alt, `^` Ctrl, `+` Shift). For PowerToys Command Palette on its default `Win + Alt + Space`:
+
+```ini
+[send.cmdpal]
+hotkey=Space
+keys=#!{Space}
+```
+
 ## Limitations
 
 - App selection follows Windows z-order; there is no separate per-app recent-use list.

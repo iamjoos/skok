@@ -14,6 +14,7 @@
 ; - super + j / k: cycle forward / backward through the current app's windows
 ; - super + l / h: cycle forward / backward through windows no [app.*] section matches
 ; - super + /: fuzzy-search all open windows and focus the pick
+; - super + <key> in a [send.*] section: send keystrokes, e.g. another app's global shortcut
 
 config_dir := EnvGet("LOCALAPPDATA") "\skok"
 DirCreate(config_dir)
@@ -110,6 +111,18 @@ if super_valid {
         configured_apps.Push({name: SubStr(section, 5), match: win_title})
         RegisterHotkey(app_hotkey, FocusOrRun.Bind(win_title, run_cmd, run_dir), section, used_hotkeys, errors)
         RegisterHotkey(new_instance_modifier app_hotkey, LaunchApp.Bind(new_instance_run, run_dir), section " new instance", used_hotkeys, errors)
+    }
+
+    for section, keys in config {
+        if !RegExMatch(section, "i)^send\.")
+            continue
+        send_hotkey := keys.Get("hotkey", "")
+        send_keys := keys.Get("keys", "")
+        if (send_hotkey = "" || send_keys = "") {
+            errors.Push("[" section "] requires hotkey and keys.")
+            continue
+        }
+        RegisterHotkey(send_hotkey, SendKeys.Bind(send_keys), section, used_hotkeys, errors)
     }
 
     HotIf()
@@ -322,6 +335,11 @@ LaunchApp(run_cmd, run_dir, *) {
     catch as err {
         MsgBox("Failed to launch: " run_cmd "`n" err.Message, "skok", "Iconx")
     }
+}
+
+SendKeys(keys, *) {
+    StopCycleSession()
+    Send(keys)
 }
 
 CycleCurrentApp(direction, *) {
