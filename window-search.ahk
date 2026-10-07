@@ -209,9 +209,9 @@ class WindowSearch {
         Loop rows {
             index := this.first + A_Index - 1
             entry := this.matches[index]
-            this.numbers[A_Index].Text := index
-            this.labels[A_Index].Text := entry.app != "" ? entry.app : entry.exe
-            this.titles[A_Index].Text := entry.title
+            WindowTheme.SetText(this.numbers[A_Index], index)
+            WindowTheme.SetText(this.labels[A_Index], entry.app != "" ? entry.app : entry.exe)
+            WindowTheme.SetText(this.titles[A_Index], entry.title)
             this.Style(A_Index, index = this.selected, entry.app != "")
         }
         ; Rows past the matches are clipped by the window height.
@@ -220,14 +220,14 @@ class WindowSearch {
             above := this.first - 1
             last := this.first + rows - 1
             below := this.matches.Length - last
-            this.overflow.Text := (above ? "↑ " above " above   ·   " : "")
+            WindowTheme.SetText(this.overflow, (above ? "↑ " above " above   ·   " : "")
                 . this.first "–" last " of " this.matches.Length
-                . (below ? "   ·   ↓ " below " below" : "")
+                . (below ? "   ·   ↓ " below " below" : ""))
             this.overflow.Visible := true
             height += WindowTheme.Scale(24)
         } else {
             this.overflow.Visible := false
-            this.overflow.Text := ""
+            WindowTheme.SetText(this.overflow, "")
         }
         ; Show applies the height itself, so an unchanged height needs no resize.
         if (height != this.height) {

@@ -52,8 +52,8 @@ class CycleStrip {
             index := first + A_Index - 1
             title := "(window closed)"
             try title := WinGetTitle(hwnds[index])
-            this.numbers[A_Index].Text := index
-            this.titles[A_Index].Text := title
+            WindowTheme.SetText(this.numbers[A_Index], index)
+            WindowTheme.SetText(this.titles[A_Index], title)
         }
         ; Rows past row_count are clipped by the window height.
         height := WindowTheme.Scale(12) + this.row_count * pitch

@@ -84,6 +84,12 @@ class WindowTheme {
 
     static AddTextCell(gui, x, y, w) => gui.AddText("x" x " y" y " w" w " h" this.Scale(28) " +0x4280 +Background" this.background, "")
 
+    ; Static controls repaint on every WM_SETTEXT, even when the text is unchanged.
+    static SetText(cell, text) {
+        if (cell.Text !== String(text))
+            cell.Text := text
+    }
+
     static StyleCell(cell, selected, color := "") {
         cell.Opt("+Background" (selected ? this.selected_background : this.background))
         cell.SetFont("norm c" (selected ? this.selected_text : (color || this.text)))
