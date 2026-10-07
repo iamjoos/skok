@@ -143,6 +143,22 @@ try {
     PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(start), "Esc after overlapping previews did not restore the origin")
 
+    ; Held keys move at once but preview only after the repeat stops; Esc drops a pending preview.
+    WindowSearch.Show(entries, Focus)
+    count := visits.Length
+    Loop 2
+        WindowSearch.OnKeyDown(0x28, 0x40000000, 0, WindowSearch.edit.Hwnd)  ; repeated Down
+    Assert(WindowSearch.selected = 3 && visits.Length = count, "Held key previewed every repeat")
+    Sleep(300)
+    Assert(visits.Length = count + 1 && visits[-1] = third, "Held key did not preview after the repeat")
+    AssertPicker()
+    AssertOutline(third, WindowSearch.window.Hwnd)
+    WindowSearch.OnKeyDown(0x26, 0x40000000, 0, WindowSearch.edit.Hwnd)  ; repeated Up
+    AssertNoOutline("Held key left the outline on the previous preview")
+    PressEsc(WindowSearch.window)
+    Sleep(300)
+    Assert(!WindowSearch.active && WinActive(start) && visits[-1] = start, "Pending preview ran after cancel")
+
     ; Cross-process previews must also cancel through actual keyboard input.
     Run('"' A_AhkPath '" /ErrorStdOut "' A_ScriptDir '\window-search-fixture.ahk"', , , &fixture_pid)
     external_origin := WinWait("Search fixture origin ahk_pid " fixture_pid, , 5)

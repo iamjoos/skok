@@ -58,9 +58,8 @@ class WindowOutline {
                 this.Build()
             thickness := Min(WindowTheme.Scale(3), Floor(width / 2), Floor(height / 2))
             ; Draw inside the frame so all edges remain visible on maximized windows.
-            for i, r in [[left, top, width, thickness], [left, top + height - thickness, width, thickness]
-                , [left, top, thickness, height], [left + width - thickness, top, thickness, height]]
-                DllCall("SetWindowPos", "Ptr", this.bars[i].Hwnd, "Ptr", 0, "Int", r[1], "Int", r[2], "Int", r[3], "Int", r[4], "UInt", 0x50)  ; HWND_TOP, SWP_NOACTIVATE | SWP_SHOWWINDOW
+            this.SetBars([[left, top, width, thickness], [left, top + height - thickness, width, thickness]
+                , [left, top, thickness, height], [left + width - thickness, top, thickness, height]], 0x50)  ; SWP_NOACTIVATE | SWP_SHOWWINDOW
             if this.overlay
                 DllCall("SetWindowPos", "Ptr", this.overlay, "Ptr", 0, "Int", 0, "Int", 0, "Int", 0, "Int", 0, "UInt", 0x13)  ; HWND_TOP, no move/size/activate
             this.geometry := geometry
@@ -76,8 +75,20 @@ class WindowOutline {
         this.target := 0
         this.overlay := 0
         this.geometry := ""
-        for _, bar in this.bars
-            bar.Hide()
+        ; The bars are always shown and hidden together.
+        if (this.bars.Length && DllCall("IsWindowVisible", "Ptr", this.bars[1].Hwnd))
+            this.SetBars([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], 0x97)  ; SWP_HIDEWINDOW | NOACTIVATE | NOZORDER | NOMOVE | NOSIZE
+    }
+
+    ; One batched update repaints all four bars together instead of one at a time.
+    static SetBars(rects, flags) {
+        defer := DllCall("BeginDeferWindowPos", "Int", 4, "Ptr")
+        for i, r in rects
+            if defer
+                defer := DllCall("DeferWindowPos", "Ptr", defer, "Ptr", this.bars[i].Hwnd, "Ptr", 0, "Int", r[1], "Int", r[2], "Int", r[3], "Int", r[4], "UInt", flags, "Ptr")
+        if !(defer && DllCall("EndDeferWindowPos", "Ptr", defer))
+            for i, r in rects
+                DllCall("SetWindowPos", "Ptr", this.bars[i].Hwnd, "Ptr", 0, "Int", r[1], "Int", r[2], "Int", r[3], "Int", r[4], "UInt", flags)
     }
 
     ; Runs inside Refresh's per-monitor DPI context, so the bars are per-monitor aware too.

@@ -555,7 +555,9 @@ ActivateWindow(hwnd) {
         ; A window disabled by a modal dialog can't take focus; activate the dialog instead.
         if (WinGetStyle(hwnd) & 0x8000000)  ; WS_DISABLED
             hwnd := DllCall("GetLastActivePopup", "Ptr", hwnd, "Ptr")
-        WinActivate(hwnd)
+        ; WinActivate sleeps ~15 ms plus WinDelay; it's only needed if Windows refuses the direct call.
+        if !(DllCall("SetForegroundWindow", "Ptr", hwnd) && DllCall("GetForegroundWindow", "Ptr") = hwnd)
+            WinActivate(hwnd)
     }
 }
 

@@ -30,6 +30,7 @@ class WindowSearch {
     static preview_pending := false
     static preview := 0
     static previews := true
+    static preview_timer := 0
 
     static Show(entries, on_pick, on_hide := 0, origin := 0) {
         ; Repeated search hotkeys must not replace the origin with the picker itself.
@@ -68,6 +69,8 @@ class WindowSearch {
 
     static Hide(activated := 0) {
         this.closing := true
+        if this.preview_timer
+            SetTimer(this.preview_timer, 0)
         WindowOutline.Hide()
         if (this.active && this.on_hide)
             this.on_hide.Call(activated, this.cancelled)
@@ -130,11 +133,14 @@ class WindowSearch {
                 this.preview := hwnd
                 ; Dialog focus selects all edit text; keep the caret so the next key doesn't replace the query.
                 selection := SendMessage(0xB0, 0, 0, this.edit)  ; EM_GETSEL
-                ; No WinDelay: pumping keys while the text is selected would replace it.
-                delay := A_WinDelay
-                SetWinDelay(-1)
-                try WinActivate(this.window)
-                finally SetWinDelay(delay)
+                ; WinActivate sleeps ~15 ms even without a WinDelay; it's only needed if Windows refuses.
+                if !(DllCall("SetForegroundWindow", "Ptr", this.window.Hwnd) && DllCall("GetForegroundWindow", "Ptr") = this.window.Hwnd) {
+                    ; No WinDelay: pumping keys while the text is selected would replace it.
+                    delay := A_WinDelay
+                    SetWinDelay(-1)
+                    try WinActivate(this.window)
+                    finally SetWinDelay(delay)
+                }
                 if this.closing
                     break
                 this.edit.Focus()
@@ -166,14 +172,22 @@ class WindowSearch {
         finally this.previewing := false
     }
 
-    static Move(direction) {
+    static Move(direction, repeat := false) {
         if (!this.active || this.closing)
             return
         if !(count := this.matches.Length)
             return
         this.selected := Mod(this.selected - 1 + direction + count, count) + 1
         this.Render()
-        this.PreviewSelection()
+        if !repeat {
+            this.PreviewSelection()
+            return
+        }
+        ; A held key repeats faster than a preview completes; preview once it is released.
+        this.Outline()
+        if !this.preview_timer
+            this.preview_timer := ObjBindMethod(this, "PreviewSelection")
+        SetTimer(this.preview_timer, -150)
     }
 
     static Update(*) {
@@ -237,14 +251,15 @@ class WindowSearch {
         if !(this.active && this.edit && hwnd = this.edit.Hwnd)
             return
         ctrl := GetKeyState("Ctrl")
+        repeat := lParam & 0x40000000  ; key was already down
         if (vk = 0x0D)                                        ; Enter
             this.Pick(this.selected)
         else if (vk = 0x1B)                                   ; Esc
             this.Cancel()
         else if (vk = 0x28 || ctrl && (vk = 0x4A || vk = 0x4E))  ; Down, Ctrl+J, Ctrl+N
-            this.Move(1)
+            this.Move(1, repeat)
         else if (vk = 0x26 || ctrl && (vk = 0x4B || vk = 0x50))  ; Up, Ctrl+K, Ctrl+P
-            this.Move(-1)
+            this.Move(-1, repeat)
         else if (ctrl && vk >= 0x31 && vk <= 0x39)            ; Ctrl+1..9
             this.Pick(vk - 0x30)
         else if (ctrl && vk = 0x08)
@@ -306,6 +321,7 @@ class WindowSearch {
         text := (entry.app != "" ? entry.app " " : "") entry.exe " " entry.title
         entry.lower := StrLower(text)
         entry.chars := StrSplit(entry.lower)
+        entry.terms := Map()
         entry.bonus := []
         prev := ""
         ; Word starts follow a non-alphanumeric character or a lower-to-upper case change.
@@ -323,8 +339,11 @@ class WindowSearch {
                 return -1
         }
         total := 0
+        scored := Map()
         for _, term in terms
-            total += this.ScoreTerm(term, entry.chars, entry.bonus)
+            total += this.ScoreTerm(term, entry, scored).best
+        ; Keep only the current terms so the cache stays one query deep.
+        entry.terms := scored
         return total
     }
 
@@ -338,41 +357,61 @@ class WindowSearch {
     }
 
     ; Best in-order alignment of the term's characters (fzf-like): word starts and runs
-    ; score higher, gaps cost 3 plus 1 per extra skipped character. -1 if there is none.
-    static ScoreTerm(term, chars, bonus) {
+    ; score higher, gaps cost 3 plus 1 per extra skipped character. best is -1 if there is none.
+    ; Rows depend only on the term's prefix, so typing resumes from the previous query's rows.
+    static ScoreTerm(term, entry, scored) {
         static NONE := -0x7FFFFFFF
-        n := chars.Length
-        prev := [], run := []
-        Loop Parse term {
-            i := A_Index, ch := A_LoopField
-            cur := [], cur_run := []
-            gap_best := NONE  ; max of prev[k] + k over k <= j - 2
-            Loop n {
-                j := A_Index
-                if (i > 1 && j >= 3 && prev[j - 2] != NONE)
-                    gap_best := Max(gap_best, prev[j - 2] + j - 2)
-                score := NONE, carried := 0
-                if (chars[j] = ch) {
-                    if (i = 1) {
-                        score := 1 + bonus[j], carried := bonus[j]
-                    } else {
-                        ; A run keeps the bonus of the word start it began at.
-                        if (j > 1 && prev[j - 1] != NONE) {
-                            carried := Max(bonus[j], run[j - 1], 4)
-                            score := prev[j - 1] + 1 + carried
-                        }
-                        if (gap_best != NONE && gap_best - j + bonus[j] > score)
-                            score := gap_best - j + bonus[j], carried := bonus[j]
-                    }
-                }
-                cur.Push(score), cur_run.Push(carried)
-            }
-            prev := cur, run := cur_run
+        if scored.Has(term)
+            return scored[term]
+        cached := entry.terms
+        len := StrLen(term)
+        while (len && !cached.Has(SubStr(term, 1, len)))
+            len--
+        if len {
+            state := cached[SubStr(term, 1, len)]
+            prev := state.prev, run := state.run, best := state.best
+        } else {
+            prev := run := 0
         }
-        best := NONE
-        for _, score in prev
-            best := Max(best, score)
-        return best = NONE ? -1 : Max(best, 0)
+        if (len < StrLen(term)) {
+            chars := entry.chars, bonus := entry.bonus, n := chars.Length
+            Loop Parse SubStr(term, len + 1) {
+                ch := A_LoopField
+                cur := [], cur_run := []
+                cur.Capacity := cur_run.Capacity := n
+                gap_best := NONE  ; max of prev[k] + k over k <= j - 2
+                Loop n {
+                    j := A_Index
+                    if (prev && j >= 3 && (p := prev[j - 2]) != NONE && p + j - 2 > gap_best)
+                        gap_best := p + j - 2
+                    if (chars[j] != ch) {
+                        cur.Push(NONE), cur_run.Push(0)
+                        continue
+                    }
+                    b := bonus[j]
+                    if !prev {
+                        cur.Push(1 + b), cur_run.Push(b)
+                        continue
+                    }
+                    score := NONE, carried := 0
+                    ; A run keeps the bonus of the word start it began at.
+                    if (j > 1 && (p := prev[j - 1]) != NONE) {
+                        carried := Max(b, run[j - 1], 4)
+                        score := p + 1 + carried
+                    }
+                    if (gap_best != NONE && gap_best - j + b > score)
+                        score := gap_best - j + b, carried := b
+                    cur.Push(score), cur_run.Push(carried)
+                }
+                prev := cur, run := cur_run
+            }
+            best := NONE
+            for _, score in prev
+                if (score > best)
+                    best := score
+            best := best = NONE ? -1 : Max(best, 0)
+        }
+        return scored[term] := {prev: prev, run: run, best: best}
     }
 
     static Build(width, capacity, theme) {
