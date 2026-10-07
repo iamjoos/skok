@@ -86,7 +86,7 @@ class WindowTheme {
 
     static StyleCell(cell, selected, color := "") {
         cell.Opt("+Background" (selected ? this.selected_background : this.background))
-        cell.SetFont(selected ? "bold c" this.selected_text : "norm c" (color || this.text))
+        cell.SetFont("norm c" (selected ? this.selected_text : (color || this.text)))
     }
 
     ; Rounded corners and an accent border on Windows 11; earlier versions ignore both attributes.

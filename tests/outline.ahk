@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 ; Outline assertions shared by the cycle and search suites; defines functions only.
+#Include lib.ahk
 
 ; Physical pixels, like the DWM bounds the outline follows.
 PhysicalPos(hwnd, &x, &y, &w, &h) {

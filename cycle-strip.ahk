@@ -84,7 +84,7 @@ class CycleStrip {
         this.numbers := []
         this.titles := []
         this.selected_row := 0
-        ; A fixed number column keeps the bold index from shifting the title.
+        ; A fixed number column keeps titles aligned regardless of index width.
         Loop row_count {
             y := s(8) + (A_Index - 1) * WindowTheme.row_pitch
             this.numbers.Push(WindowTheme.AddNumberCell(this.window, y))
