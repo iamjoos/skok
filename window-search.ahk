@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #Include %A_LineFile%\..\window-theme.ahk
+#Include %A_LineFile%\..\window-outline.ahk
 
 ; A focusable picker that fuzzy-filters window entries ({hwnd, app, exe, title, current}) as you type.
 class WindowSearch {
@@ -37,8 +38,7 @@ class WindowSearch {
         theme := WindowTheme.Refresh()
         active := WinExist("A")
         this.origin := origin || active
-        if !WindowTheme.WorkArea(active, &left, &top, &right, &bottom)
-            return
+        WindowTheme.OverlayWorkArea(active, &left, &top, &right, &bottom)
         width := WindowTheme.PopupWidth(720, left, right)
         ; Reserve room for the overflow footer even on short work areas.
         capacity := Max(1, Min(20, Floor((bottom - top - WindowTheme.Scale(120)) / WindowTheme.row_pitch)))
@@ -63,10 +63,12 @@ class WindowSearch {
         this.window.Show(WindowTheme.Placement(left, top, right, width) " h" this.height)
         WinActivate(this.window)
         this.edit.Focus()
+        this.Outline()
     }
 
     static Hide(activated := 0) {
         this.closing := true
+        WindowOutline.Hide()
         if (this.active && this.on_hide)
             this.on_hide.Call(activated, this.cancelled)
         this.active := false
@@ -121,6 +123,7 @@ class WindowSearch {
                 hwnd := this.matches[this.selected].hwnd
                 if (hwnd = this.preview || !WinExist(hwnd))
                     break
+                WindowOutline.Hide()
                 this.on_pick.Call(hwnd)
                 if this.closing
                     break
@@ -139,11 +142,21 @@ class WindowSearch {
                 if !this.preview_pending
                     break
             }
+            this.Outline()
         } finally {
             this.previewing := false
             if (this.active && this.closing)
                 this.Complete()
         }
+    }
+
+    ; Only a previewed selection is in front; the focused picker stays above its outline.
+    static Outline() {
+        hwnd := this.selected ? this.matches[this.selected].hwnd : 0
+        if (this.previews && this.active && !this.closing && hwnd && hwnd = this.preview)
+            WindowOutline.Show(hwnd, this.window.Hwnd)
+        else
+            WindowOutline.Hide()
     }
 
     ; Internal activations must not be mistaken for clicking away from the picker.

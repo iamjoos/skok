@@ -47,7 +47,7 @@ Cycling counts as one visit: after releasing `super`, `super + Tab` returns to t
 
 ### Cycle strip
 
-While cycling, a click-through title strip at the top of the selected window's monitor lists the windows in order and highlights the current one. It disappears when `super` is released. Disable it with `show_cycle_titles=0` under `[settings]`.
+While cycling, a click-through title strip lists the windows in order and highlights the current one, and the selected window is [outlined](#overlays). Both disappear when `super` is released. Disable the strip with `show_cycle_titles=0` under `[settings]`.
 
 ### Window search
 
@@ -62,9 +62,17 @@ With an empty query, the current window is the top result, whether configured or
 | Enter | Accept the selected window. |
 | Esc | Cancel and return to the window where search started (the last focused window if started from the taskbar or desktop). |
 
-The selected window is brought forward as you type or navigate, while the search box keeps keyboard focus. Previews count as one visit: after accepting, `super + Tab` returns to the starting window; cancelling leaves previous-window history unchanged. Restored minimized windows stay restored on cancel. Disable previews with `preview_search_selection=0` under `[settings]`; the selected window is then only focused when accepted.
+The selected window is brought forward and [outlined](#overlays) as you type or navigate, while the search box keeps keyboard focus. Previews count as one visit: after accepting, `super + Tab` returns to the starting window; cancelling leaves previous-window history unchanged. Restored minimized windows stay restored on cancel. Disable previews with `preview_search_selection=0` under `[settings]`; the selected window is then only focused when accepted.
 
-Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Clicking another window closes search without returning to the starting window. Both overlays use the Windows accent color. Set `theme=system` (default), `theme=light` or `theme=dark` under `[settings]` to follow Windows' app light/dark preference or force a theme. System theme and accent changes are picked up when an overlay is next shown. Invalid theme values are reported at startup and fall back to `system`.
+Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Clicking another window closes search without returning to the starting window.
+
+### Overlays
+
+The cycle strip and search open at the top of the Windows primary (main) display. Set `overlay_display=active` under `[settings]` to use the display of the window that was active when cycling or search started instead. Either way, they stay put while selecting windows on other displays.
+
+An outline around the selected window makes it easy to find across displays. It follows the window's visible frame without moving, resizing, focusing or blocking clicks on the window. Disable it with `highlight_selection=0`.
+
+Overlays use the Windows accent color. Set `theme=system` (default), `theme=light` or `theme=dark` to follow Windows' app light/dark preference or force a theme. System theme and accent changes are picked up when cycling or search next starts. Invalid `overlay_display` and `theme` values are reported at startup and fall back to `primary` and `system`. Reload after changing settings.
 
 ## Configuration
 
@@ -83,6 +91,8 @@ search_windows_hotkey=/
 preview_search_selection=1
 new_instance_modifier=Shift
 show_cycle_titles=1
+overlay_display=primary
+highlight_selection=1
 theme=system
 
 [app.vscode]
@@ -121,7 +131,7 @@ Use AutoHotkey's **Window Spy** to find an app's executable; prefer `ahk_exe` ov
 - `super + j` / `k` cycle windows sharing the active window's executable. Classic UWP apps (Settings, Calculator) all run under `ApplicationFrameHost.exe` and cycle together.
 - `super + l` / `h` fix their window list on the first press until `super` is released. From a configured app, forward starts at the first unconfigured window and reverse at the last.
 - Previous-window tracking uses a shell hook; if the previous window closed, it falls back to the most recently used other window.
-- Tested only on Windows 11 with a single monitor.
+- Tested only on Windows 11.
 - Hotkeys do not work over an elevated window unless skok runs elevated.
 - `Win + L` always locks the PC and cannot be a hotkey.
 

@@ -9,14 +9,30 @@ class CycleStrip {
     static selected_row := 0
     static row_count := 0
     static size := ""
+    static work_area := 0
+    static theme := ""
+
+    ; Freeze placement and colors before the first activation, even if the origin moves or closes.
+    static Begin() {
+        this.theme := WindowTheme.Refresh()
+        WindowTheme.OverlayWorkArea(WinExist("A"), &left, &top, &right, &bottom)
+        this.work_area := {left: left, top: top, right: right, bottom: bottom}
+    }
+
+    static Reset() {
+        this.Hide()
+        this.work_area := 0
+    }
 
     static Show(hwnds, selected) {
         ; Do not claim that a window was selected if activation failed or a dialog intervened.
-        if (hwnds.Length < 2 || !selected || !WindowTheme.WorkArea(hwnds[selected], &left, &top, &right, &bottom)) {
+        if (hwnds.Length < 2 || !selected || !this.work_area) {
             this.Hide()
             return
         }
-        theme := WindowTheme.Refresh()
+        area := this.work_area
+        left := area.left, top := area.top, right := area.right, bottom := area.bottom
+        theme := this.theme
         width := WindowTheme.PopupWidth(640, left, right)
         pitch := WindowTheme.row_pitch
         capacity := Max(1, Floor((bottom - top - WindowTheme.Scale(44)) / pitch))

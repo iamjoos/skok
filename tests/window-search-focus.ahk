@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #Include ..\window-search.ahk
 #Include lib.ahk
+#Include outline.ahk
 
 Focus(hwnd) {
     global visits, cancel_during_preview, change_during_finish, move_during_preview
@@ -49,15 +50,48 @@ try {
         {hwnd: third, app: "Third", exe: "test", title: "Third", current: false},
         {hwnd: start, app: "Start", exe: "test", title: "Start", current: true}
     ]
+    ; Exercise both policies on every attached monitor (also valid on one monitor).
+    primary := MonitorGetPrimary()
+    MonitorGetWorkArea(primary, &primary_left, &primary_top)
+    WinMove(primary_left + 40, primary_top + 40, , , second)
+    Loop MonitorGetCount() {
+        monitor := A_Index
+        MonitorGetWorkArea(monitor, &left, &top)
+        WinMove(left + 40, top + 40, , , start)
+        for display in ["primary", "active"] {
+            WindowTheme.SetDisplay(display)
+            WinActivate(start)
+            WindowSearch.Show(entries, Focus)
+            AssertPicker()
+            expected := display = "primary" ? primary : monitor
+            MonitorGetWorkArea(expected, &expected_left, &expected_top, &expected_right, &expected_bottom)
+            Assert(WindowTheme.WorkArea(WindowSearch.window.Hwnd, &actual_left, &actual_top, &actual_right, &actual_bottom), "Could not read search monitor")
+            Assert(actual_left = expected_left && actual_top = expected_top
+                && actual_right = expected_right && actual_bottom = expected_bottom, "Search opened on the wrong display: " display)
+            WinGetPos(&picker_x, &picker_y, , , WindowSearch.window)
+            WindowSearch.Move(1)
+            AssertPicker()
+            AssertOutline(second, WindowSearch.window.Hwnd)
+            WinGetPos(&preview_x, &preview_y, , , WindowSearch.window)
+            Assert(picker_x = preview_x && picker_y = preview_y, "Preview moved search to another display")
+            PressEsc(WindowSearch.window)
+            Assert(!WindowSearch.active && WinActive(start), "Display policy changed cancellation focus")
+            AssertNoOutline("Cancel left the outline")
+        }
+    }
+    WindowTheme.SetDisplay("primary")
+    visits := []
     WinActivate(start)
     WindowSearch.Show(entries, Focus)
     Assert(!visits.Length, "Opening search re-activated the current window")
     AssertPicker()
+    AssertOutline(start, WindowSearch.window.Hwnd)
 
     ; Navigation previews, wraps, and does not replace the saved origin on reopening.
     WindowSearch.OnKeyDown(0x28, 0, 0, WindowSearch.edit.Hwnd)
     Assert(visits[-1] = second, "Down did not preview the next window")
     AssertPicker()
+    AssertOutline(second, WindowSearch.window.Hwnd)
     WindowSearch.Show(entries, Focus)
     Assert(WindowSearch.origin = start, "Reopening replaced the origin")
     WindowSearch.Move(-1)
@@ -86,6 +120,7 @@ try {
     WindowSearch.Pick(0)
     Assert(visits.Length = count, "Empty results activated a window")
     AssertPicker()
+    AssertNoOutline("Empty results kept an outline")
     PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(start), "Esc did not restore the origin")
 
@@ -154,6 +189,7 @@ try {
     SendEvent("th")
     Assert(visits.Length = count, "Disabled previews activated a window")
     AssertPicker()
+    AssertNoOutline("Disabled previews outlined a background window")
     WindowSearch.OnKeyDown(0x0D, 0, 0, WindowSearch.edit.Hwnd)
     Assert(!WindowSearch.active && WinActive(third), "Enter without previews did not accept the selection")
     WinActivate(start)

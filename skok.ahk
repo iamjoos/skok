@@ -2,6 +2,7 @@
 #SingleInstance Force
 #Include %A_LineFile%\..\window-theme.ahk
 #Include %A_LineFile%\..\cycle-strip.ahk
+#Include %A_LineFile%\..\window-outline.ahk
 #Include %A_LineFile%\..\window-search.ahk
 
 ; Jump between windows from the keyboard (never moves or resizes them):
@@ -38,7 +39,12 @@ super_key := settings.Get("super_key", "CapsLock")
 new_instance_modifier := settings.Get("new_instance_modifier", "Shift")
 new_instance_modifier := modifier_prefixes.Get(StrLower(new_instance_modifier), new_instance_modifier)
 show_cycle_titles := BoolSetting(settings, "show_cycle_titles", true, errors)
+WindowOutline.enabled := BoolSetting(settings, "highlight_selection", true, errors)
 WindowSearch.previews := BoolSetting(settings, "preview_search_selection", true, errors)
+
+try WindowTheme.SetDisplay(settings.Get("overlay_display", "primary"))
+catch as err
+    errors.Push(err.Message)
 
 try WindowTheme.SetMode(settings.Get("theme", "system"))
 catch as err
@@ -340,12 +346,15 @@ BeginCycleSession(active) {
     cycle_session := true
     cycle_origin := active
     cycle_origin_previous := previous_window
+    CycleStrip.Begin()
     SetTimer(EndCycleSession, 30)
 }
 
 EndCycleSession() {
     if !IsSuperPressed()
         StopCycleSession()
+    else
+        WindowOutline.Refresh()
 }
 
 StopCycleSession() {
@@ -354,7 +363,8 @@ StopCycleSession() {
     cycle_origin := 0
     unconfigured_cycle := []
     SetTimer(EndCycleSession, 0)
-    CycleStrip.Hide()
+    CycleStrip.Reset()
+    WindowOutline.Hide()
 }
 
 ; The unconfigured-only list is fixed on the first press of a session.
@@ -454,6 +464,7 @@ CloseActiveWindow(*) {
     ; Keep the session so history still points at its origin, but drop views of the closed window.
     unconfigured_cycle := []
     CycleStrip.Hide()
+    WindowOutline.Hide()
     ; Closing the desktop or taskbar would open the shutdown dialog.
     try {
         active := WinGetID("A")
@@ -469,11 +480,19 @@ ActivateNextWindow(hwnds, active, direction) {
         next_index := direction > 0 ? 1 : hwnds.Length
     else
         next_index := WrapIndex(current_index, direction, hwnds.Length)
+    ; Drop the old outline now rather than after the activation delay.
+    WindowOutline.Hide()
     ActivateWindow(hwnds[next_index])
-    ; The release timer could otherwise end the session between this check and showing the strip.
+    ; The release timer could otherwise end the session between this check and showing overlays.
     Critical
-    if (cycle_session && show_cycle_titles)
-        CycleStrip.Show(hwnds, IndexOf(hwnds, GetActiveWindow()))
+    if cycle_session {
+        selected := IndexOf(hwnds, GetActiveWindow())
+        if show_cycle_titles
+            CycleStrip.Show(hwnds, selected)
+        ; Outline the actual foreground popup if a modal dialog owns activation.
+        if (hwnds.Length > 1 && selected)
+            WindowOutline.Show(WinExist("A"), CycleStrip.window ? CycleStrip.window.Hwnd : 0)
+    }
 }
 
 GetCycleableWindows(win_title) {

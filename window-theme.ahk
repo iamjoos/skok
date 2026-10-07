@@ -3,6 +3,7 @@
 ; Shared visual style and layout helpers for the cycle strip and window-search picker.
 class WindowTheme {
     static mode := "system"
+    static display := "primary"
     ; Colors are set by Refresh().
     static background := ""
     static selected_background := ""
@@ -19,6 +20,12 @@ class WindowTheme {
         if !RegExMatch(mode, "i)^(system|light|dark)$")
             throw ValueError("Invalid theme '" mode "': use system, light or dark.")
         this.mode := StrLower(mode)
+    }
+
+    static SetDisplay(display) {
+        if !RegExMatch(display, "i)^(primary|active)$")
+            throw ValueError("Invalid overlay_display '" display "': use primary or active.")
+        this.display := StrLower(display)
     }
 
     ; Resolve the chosen theme and read the DWM accent each time a picker is shown.
@@ -89,6 +96,13 @@ class WindowTheme {
         rgb := Integer("0x" this.selected_background)
         colorref := (rgb & 0xFF) << 16 | rgb & 0xFF00 | rgb >> 16
         DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hwnd, "UInt", 34, "UInt*", &colorref, "UInt", 4)  ; DWMWA_BORDER_COLOR
+    }
+
+    ; Shared popup policy; callers resolve once when search/cycling begins.
+    static OverlayWorkArea(hwnd, &left, &top, &right, &bottom) {
+        if (this.display = "active" && this.WorkArea(hwnd, &left, &top, &right, &bottom))
+            return
+        MonitorGetWorkArea(MonitorGetPrimary(), &left, &top, &right, &bottom)
     }
 
     ; Work area of the monitor nearest the window; false if it can't be read.

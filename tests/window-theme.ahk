@@ -3,6 +3,21 @@
 #Include lib.ahk
 
 try {
+    AssertEqual(WindowTheme.display, "primary")
+    WindowTheme.SetDisplay("ACTIVE")
+    AssertEqual(WindowTheme.display, "active")
+    WindowTheme.SetDisplay("Primary")
+    AssertEqual(WindowTheme.display, "primary")
+    for display in ["", "secondary", "primary; comment"] {
+        rejected := false
+        try WindowTheme.SetDisplay(display)
+        catch ValueError {
+            rejected := true
+        }
+        Assert(rejected, "Invalid overlay display was accepted: '" display "'.")
+        AssertEqual(WindowTheme.display, "primary")
+    }
+
     AssertEqual(WindowTheme.mode, "system")
     WindowTheme.SetMode("LIGHT")
     AssertEqual(WindowTheme.mode, "light")
