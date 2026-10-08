@@ -8,13 +8,13 @@ skok is not a window manager. It never moves, resizes, tiles or arranges windows
 
 It gives you a fixed key per frequent app, direct cycling through an app's windows, and fuzzy search for everything else. With the default `CapsLock` modifier (`super` below):
 
-- `super + Tab`: toggle between the active and previously focused window, without the `Alt + Tab` switcher.
+- `super + Space`: toggle between the active and previously focused window, without the `Alt + Tab` switcher.
 - `super + <app key>`: focus or launch that app; press again to cycle through its windows.
-- `super + Shift + <app key>`: run the app's new-instance command (`new_instance_run`, or `run` if unset).
+- `super + Alt + <app key>`: run the app's new-instance command (`new_instance_run`, or `run` if unset).
 - `super + j` / `k`: cycle forward / backward through windows of the active app, configured or not.
 - `super + l` / `h`: cycle through unconfigured windows (those with no matching `[app.*]` section).
-- `super + Backspace`: close the active window.
-- `super + /`: fuzzy-search all open windows by title, app name or executable.
+- `super + Shift + Backspace`: close the active window.
+- `super + s`: fuzzy-search all open windows by title, app name or executable.
 
 Windows' own shortcuts (`Win + 1..9`, `Alt + Tab`, `Win + T`) cover much of this, but they depend on taskbar position or opening order, or need the mouse to cycle one app's windows. If they already work for you, you don't need skok.
 
@@ -22,28 +22,28 @@ Windows' own shortcuts (`Win + 1..9`, `Alt + Tab`, `Win + T`) cover much of this
 
 1. Install [AutoHotkey v2](https://www.autohotkey.com/).
 2. Run [skok.ahk](skok.ahk). On first launch it creates `%LOCALAPPDATA%\skok\config.ini` from [config.example.ini](config.example.ini).
-3. With two windows open, press `CapsLock + Tab`. The example config also binds `b` (Edge), `v` (VS Code) and `Enter` (Windows Terminal); the launch commands `msedge`, `code` and `wt` must be on your `PATH`.
+3. With two windows open, press `CapsLock + Space`. The example config also binds `b` (Edge), `v` (VS Code) and `Enter` (Windows Terminal); the launch commands `msedge`, `code` and `wt` must be on your `PATH`.
 4. Use the tray menu's **Edit config**, then **Reload Script**, to change shortcuts and apps.
 
 An existing config is never overwritten or merged. Use the tray menu's **Suspend Hotkeys** or **Exit** to pause or stop. To start at sign-in, put a shortcut to the script in `shell:startup`. Invalid hotkeys and incomplete app sections are reported at startup.
 
 ## Shortcuts
 
-`super` is configurable (`super_key`): **CapsLock by default**, which then no longer toggles caps. Another key such as F24 is safest; a standard modifier such as Alt takes over that modifier's shortcuts in other apps.
+`super` is configurable (`super_key`): **CapsLock by default**, which then no longer toggles caps. Another key such as F24 is safest; a standard modifier such as Alt takes over that modifier's shortcuts in other apps. Win also overrides Windows shortcuts (`Win + V`, `Win + H`, ...), and `Win + L` cannot be bound, so move `cycle_unconfigured_hotkey` off `l`.
 
 | Shortcut | Action | Config key |
 | --- | --- | --- |
-| `super + Tab` | Toggle between the active and previous window. | `previous_window_hotkey` |
+| `super + Space` | Toggle between the active and previous window. | `previous_window_hotkey` |
 | `super + <app key>` | Focus the app's topmost window, launch it if none, cycle if already active. | `hotkey` in `[app.*]` |
-| `super + Shift + <app key>` | Run `new_instance_run` (else `run`). | `new_instance_modifier` |
+| `super + Alt + <app key>` | Run `new_instance_run` (else `run`). Shift if `super_key` is Alt. | `new_instance_modifier` |
 | `super + j` / `k` | Cycle windows of the active app. | `cycle_app_windows_hotkey`, `reverse_cycle_app_windows_hotkey` |
 | `super + l` / `h` | Cycle windows with no matching `[app.*]` section. | `cycle_unconfigured_hotkey`, `reverse_cycle_unconfigured_hotkey` |
-| `super + Backspace` | Ask the active window to close (it may prompt to save). | `close_window_hotkey` |
-| `super + /` | Open window search, or cancel it if already open. | `search_windows_hotkey` |
+| `super + Shift + Backspace` | Ask the active window to close (it may prompt to save). | `close_window_hotkey` |
+| `super + s` | Open window search, or cancel it if already open. | `search_windows_hotkey` |
 
-Hotkey values use AHK syntax: `!` is Alt, `+` Shift, `^` Ctrl. Minimized windows are restored when focused.
+Hotkey values use AHK syntax: `!` is Alt, `+` Shift, `^` Ctrl. An app's `hotkey` must not include `new_instance_modifier`, which is added for its new-instance shortcut. Minimized windows are restored when focused.
 
-Cycling previews windows in place (like [search](#window-search)) and only focuses the selected one when you release `super`, so it counts as one visit: `super + Tab` and the Windows `Alt + Tab` order return to the window where the cycle began, not to each window passed through. Other skok hotkeys pressed while cycling first focus the selection; `super + Backspace` closes the previewed window instead.
+Cycling previews windows in place (like [search](#window-search)) and only focuses the selected one when you release `super`, so it counts as one visit: `super + Space` and the Windows `Alt + Tab` order return to the window where the cycle began, not to each window passed through. Other skok hotkeys pressed while cycling first focus the selection; `super + Shift + Backspace` closes the previewed window instead.
 
 ### Cycle strip
 
@@ -51,7 +51,7 @@ While cycling, a click-through title strip lists the windows in order and highli
 
 ### Window search
 
-`super + /` lists every window cycling considers. Release `super`, then type: characters must appear in order but not adjacent (`rdm` finds `README.md`), and space-separated terms match in any order, against the app name, executable and title. For example, `vscode rdm` finds a VS Code window titled `README.md`. Search covers windows, not browser tabs or files.
+`super + s` lists every window cycling considers. Release `super`, then type: characters must appear in order but not adjacent (`rdm` finds `README.md`), and space-separated terms match in any order, against the app name, executable and title. For example, `vscode rdm` finds a VS Code window titled `README.md`. Search covers windows, not browser tabs or files.
 
 With an empty query, the current window is the top result, whether configured or not, so pressing Enter without typing stays in that window. Other windows matching configured apps follow, then unconfigured windows, each group in recent-use order. Results show the `[app.<name>]` section name or, for unconfigured windows, the executable.
 
@@ -62,7 +62,7 @@ With an empty query, the current window is the top result, whether configured or
 | Enter | Accept the selected window. |
 | Esc or the search shortcut again | Cancel and return to the window where search started (the last focused window if started from the taskbar or desktop). |
 
-As you type or navigate, the selected window is previewed in place: a live, click-through thumbnail is drawn over its visible frame and [outlined](#overlays), while the search box keeps keyboard focus. Minimized windows are previewed centered on their display without being restored. Nothing is activated until you accept, so `super + Tab` and the Windows Alt+Tab order only see the accepted window, and cancelling changes neither. Disable previews with `preview_search_selection=0` under `[settings]`.
+As you type or navigate, the selected window is previewed in place: a live, click-through thumbnail is drawn over its visible frame and [outlined](#overlays), while the search box keeps keyboard focus. Minimized windows are previewed centered on their display without being restored. Nothing is activated until you accept, so `super + Space` and the Windows Alt+Tab order only see the accepted window, and cancelling changes neither. Disable previews with `preview_search_selection=0` under `[settings]`.
 
 Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Clicking another window closes search without returning to the starting window.
 
@@ -81,15 +81,15 @@ Edit `%LOCALAPPDATA%\skok\config.ini` and reload; [config.example.ini](config.ex
 ```ini
 [settings]
 super_key=CapsLock
-previous_window_hotkey=Tab
+previous_window_hotkey=Space
 cycle_app_windows_hotkey=j
 reverse_cycle_app_windows_hotkey=k
 cycle_unconfigured_hotkey=l
 reverse_cycle_unconfigured_hotkey=h
-close_window_hotkey=Backspace
-search_windows_hotkey=/
+close_window_hotkey=+Backspace
+search_windows_hotkey=s
 preview_search_selection=1
-new_instance_modifier=Shift
+new_instance_modifier=Alt
 show_cycle_titles=1
 overlay_display=primary
 highlight_selection=1
@@ -128,7 +128,7 @@ A `[send.<name>]` section sends keystrokes instead, which is useful for apps tha
 
 ```ini
 [send.cmdpal]
-hotkey=Space
+hotkey=p
 keys=#!{Space}
 ```
 

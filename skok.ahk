@@ -7,13 +7,13 @@
 
 ; Jump between windows from the keyboard (never moves or resizes them):
 ; - super + <key>: focus an app's most recently used window, otherwise launch it
-; - super + <previous_window_hotkey>: toggle to the previously focused window (default: Tab)
-; - super + <new_instance_modifier> + <key>: launch a new instance of the app (default modifier: shift)
-; - super + <close_window_hotkey>: close the active window (default: Backspace)
+; - super + <previous_window_hotkey>: toggle to the previously focused window (default: Space)
+; - super + <new_instance_modifier> + <key>: launch a new instance of the app (default modifier: alt)
+; - super + <close_window_hotkey>: close the active window (default: shift + Backspace)
 ; - repeated super + <app key>: cycle through that app's windows
 ; - super + j / k: cycle forward / backward through the current app's windows
 ; - super + l / h: cycle forward / backward through windows no [app.*] section matches
-; - super + /: fuzzy-search all open windows and focus the pick
+; - super + s: fuzzy-search all open windows and focus the pick
 ; - super + <key> in a [send.*] section: send keystrokes, e.g. another app's global shortcut
 
 config_dir := EnvGet("LOCALAPPDATA") "\skok"
@@ -37,7 +37,7 @@ modifier_prefixes := Map("alt", "!", "lalt", "<!", "ralt", ">!"
     , "shift", "+", "lshift", "<+", "rshift", ">+", "win", "#", "lwin", "<#", "rwin", ">#")
 
 super_key := settings.Get("super_key", "CapsLock")
-new_instance_modifier := settings.Get("new_instance_modifier", "Shift")
+new_instance_modifier := settings.Get("new_instance_modifier", InStr(super_key, "alt") ? "Shift" : "Alt")
 new_instance_modifier := modifier_prefixes.Get(StrLower(new_instance_modifier), new_instance_modifier)
 show_cycle_titles := BoolSetting(settings, "show_cycle_titles", true, errors)
 WindowOutline.enabled := BoolSetting(settings, "highlight_selection", true, errors)
@@ -82,13 +82,13 @@ if super_valid {
         HotIf(IsSuperPressed)
 
     ; [setting, default key, action]
-    setting_hotkeys := [["previous_window_hotkey", "Tab", SwitchToPreviousWindow]
+    setting_hotkeys := [["previous_window_hotkey", "Space", SwitchToPreviousWindow]
         , ["cycle_app_windows_hotkey", "j", CycleCurrentApp.Bind(1)]
         , ["reverse_cycle_app_windows_hotkey", "k", CycleCurrentApp.Bind(-1)]
         , ["cycle_unconfigured_hotkey", "l", CycleUnconfigured.Bind(1)]
         , ["reverse_cycle_unconfigured_hotkey", "h", CycleUnconfigured.Bind(-1)]
-        , ["close_window_hotkey", "Backspace", CloseActiveWindow]
-        , ["search_windows_hotkey", "/", SearchWindows]]
+        , ["close_window_hotkey", "+Backspace", CloseActiveWindow]
+        , ["search_windows_hotkey", "s", SearchWindows]]
     for _, h in setting_hotkeys
         RegisterHotkey(settings.Get(h[1], h[2]), h[3], h[1], used_hotkeys, errors)
 

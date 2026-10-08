@@ -98,7 +98,7 @@ try {
     SyncActiveWindow()
     Assert(current_window = selection && previous_window = trio[1], "Cycling was not one visit from the origin")
 
-    ; Other hotkeys first activate the selection: super + Tab mid-cycle returns to where cycling began.
+    ; Other hotkeys first activate the selection: super + Space mid-cycle returns to where cycling began.
     BeginCycleSession()
     SetTimer(EndCycleSession, 0)
     SelectNextWindow(sorted, selection, 1)
@@ -106,7 +106,7 @@ try {
     Assert(cycle_selected != selection, "Cycling did not move")
     SwitchToPreviousWindow()
     AssertHidden()
-    Assert(WinActive(selection), "super + Tab during cycling did not return to the origin")
+    Assert(WinActive(selection), "super + Space during cycling did not return to the origin")
 
     ; Closing while cycling closes the previewed window, not the focused one.
     BeginCycleSession()
