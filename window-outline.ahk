@@ -10,7 +10,7 @@ class WindowOutline {
     static geometry := ""
     static color := ""
 
-    ; overlay: the strip or picker, kept above the bars; while it is active, the target need not be.
+    ; overlay: the strip or picker, kept above the bars.
     ; Callers refresh WindowTheme when their cycle/search session starts.
     static Show(hwnd, overlay := 0) {
         if !this.enabled {
@@ -28,7 +28,6 @@ class WindowOutline {
         this.Refresh()
     }
 
-    ; Called by the cycle release timer, so moving/resizing the foreground window is safe.
     static Refresh() {
         hwnd := this.target
         if !hwnd
@@ -36,18 +35,11 @@ class WindowOutline {
         ; DWM bounds are physical pixels; system-DPI coordinates would misplace bars on other-DPI monitors.
         context := DllCall("SetThreadDpiAwarenessContext", "Ptr", -4, "Ptr")  ; PER_MONITOR_AWARE_V2
         try {
-            if (!(WinActive(hwnd) || this.overlay && WinActive(this.overlay)) || WinGetMinMax(hwnd) = -1) {
+            if (!DllCall("IsWindowVisible", "Ptr", hwnd) || WinGetMinMax(hwnd) = -1) {
                 this.Hide()
                 return
             }
-            rect := Buffer(16, 0)
-            ; DWM bounds omit invisible resize margins. Fall back on older/non-DWM windows.
-            if (DllCall("dwmapi\DwmGetWindowAttribute", "Ptr", hwnd, "UInt", 9, "Ptr", rect, "UInt", 16, "Int") != 0)
-                if !DllCall("GetWindowRect", "Ptr", hwnd, "Ptr", rect)
-                    throw Error("Could not read outline target bounds.")
-            left := NumGet(rect, 0, "Int"), top := NumGet(rect, 4, "Int")
-            width := NumGet(rect, 8, "Int") - left, height := NumGet(rect, 12, "Int") - top
-            if (width < 2 || height < 2) {
+            if !this.FrameRect(hwnd, &left, &top, &width, &height) {
                 this.Hide()
                 return
             }
@@ -68,6 +60,18 @@ class WindowOutline {
         } finally {
             DllCall("SetThreadDpiAwarenessContext", "Ptr", context, "Ptr")
         }
+    }
+
+    ; In physical pixels when called under a per-monitor DPI context.
+    static FrameRect(hwnd, &left, &top, &width, &height) {
+        rect := Buffer(16, 0)
+        ; DWM bounds omit invisible resize margins. Fall back on older/non-DWM windows.
+        if (DllCall("dwmapi\DwmGetWindowAttribute", "Ptr", hwnd, "UInt", 9, "Ptr", rect, "UInt", 16, "Int") != 0)
+            if !DllCall("GetWindowRect", "Ptr", hwnd, "Ptr", rect)
+                return false
+        left := NumGet(rect, 0, "Int"), top := NumGet(rect, 4, "Int")
+        width := NumGet(rect, 8, "Int") - left, height := NumGet(rect, 12, "Int") - top
+        return width >= 2 && height >= 2
     }
 
     static Hide() {

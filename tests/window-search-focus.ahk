@@ -4,16 +4,7 @@
 #Include outline.ahk
 
 Focus(hwnd) {
-    global visits, cancel_during_preview, change_during_finish, move_during_preview
-    if cancel_during_preview {
-        cancel_during_preview := false
-        ; The preview still activates its target after the cancellation request.
-        WindowSearch.Cancel(WindowSearch.window)
-    }
-    if move_during_preview {
-        move_during_preview := false
-        WindowSearch.Move(1)
-    }
+    global visits, change_during_finish
     if change_during_finish {
         change_during_finish := false
         WindowSearch.edit.Value := "third"
@@ -27,17 +18,20 @@ Focus(hwnd) {
 }
 
 AssertPicker() {
-    Assert(WindowSearch.active, "Preview dismissed search")
-    Assert(WinActive(WindowSearch.window), "Search did not regain keyboard focus")
+    Assert(WindowSearch.active, "Search was dismissed")
+    Assert(WinActive(WindowSearch.window), "Search lost keyboard focus")
     Assert(ControlGetFocus(WindowSearch.window) = WindowSearch.edit.Hwnd, "Search edit lost focus")
+}
+
+AssertPeek(hwnd) {
+    AssertPicker()
+    AssertPeekShown(hwnd, WindowSearch.window.Hwnd)
 }
 
 origin := WinExist("A")
 windows := []
 visits := []
-cancel_during_preview := false
 change_during_finish := false
-move_during_preview := false
 exit_code := 0
 fixture_pid := 0
 try {
@@ -70,96 +64,108 @@ try {
                 && actual_right = expected_right && actual_bottom = expected_bottom, "Search opened on the wrong display: " display)
             WinGetPos(&picker_x, &picker_y, , , WindowSearch.window)
             WindowSearch.Move(1)
-            AssertPicker()
-            AssertOutline(second, WindowSearch.window.Hwnd)
-            WinGetPos(&preview_x, &preview_y, , , WindowSearch.window)
-            Assert(picker_x = preview_x && picker_y = preview_y, "Preview moved search to another display")
+            AssertPeek(second)
+            WinGetPos(&peek_x, &peek_y, , , WindowSearch.window)
+            Assert(picker_x = peek_x && picker_y = peek_y, "Peek moved search to another display")
             PressEsc(WindowSearch.window)
             Assert(!WindowSearch.active && WinActive(start), "Display policy changed cancellation focus")
-            AssertNoOutline("Cancel left the outline")
+            AssertNoPeek("Cancel left the peek")
         }
     }
     WindowTheme.SetDisplay("primary")
+
+    ; Peeks cover the visible frame on every display, also for per-monitor-aware apps on other-DPI displays.
+    context := DllCall("SetThreadDpiAwarenessContext", "Ptr", -4, "Ptr")
+    try per_monitor := Gui(, "Search peek per-monitor fixture")
+    finally DllCall("SetThreadDpiAwarenessContext", "Ptr", context, "Ptr")
+    windows.Push(per_monitor)
+    per_monitor.Show("w240 h100")
+    mixed := [
+        {hwnd: per_monitor.Hwnd, app: "PerMonitor", exe: "test", title: "PerMonitor", current: false},
+        {hwnd: second, app: "Second", exe: "test", title: "Second", current: false},
+        {hwnd: start, app: "Start", exe: "test", title: "Start", current: true}
+    ]
+    Loop MonitorGetCount() {
+        MonitorGetWorkArea(A_Index, &left, &top)
+        WinMove(left + 60, top + 60, , , per_monitor)
+        WinMove(left + 400, top + 60, , , second)
+        WinActivate(start)
+        WindowSearch.Show(mixed, Focus)
+        WindowSearch.Move(1)
+        AssertPeek(per_monitor.Hwnd)
+        WindowSearch.Move(1)
+        AssertPeek(second)
+        PressEsc(WindowSearch.window)
+    }
+    per_monitor.Hide()
     visits := []
     WinActivate(start)
     WindowSearch.Show(entries, Focus)
     Assert(!visits.Length, "Opening search re-activated the current window")
-    AssertPicker()
-    AssertOutline(start, WindowSearch.window.Hwnd)
+    AssertPeek(start)
 
-    ; Navigation previews, wraps, and does not replace the saved origin on reopening.
+    ; Navigation peeks without activating, wraps, and does not replace the saved origin on reopening.
     WindowSearch.OnKeyDown(0x28, 0, 0, WindowSearch.edit.Hwnd)
-    Assert(visits[-1] = second, "Down did not preview the next window")
-    AssertPicker()
-    AssertOutline(second, WindowSearch.window.Hwnd)
+    AssertPeek(second)
+    WindowSearch.OnKeyDown(0x28, 0x40000000, 0, WindowSearch.edit.Hwnd)  ; auto-repeated Down
+    AssertPeek(third)
+    Assert(!visits.Length, "Navigation activated a window")
     WindowSearch.Show(entries, Focus)
     Assert(WindowSearch.origin = start, "Reopening replaced the origin")
     WindowSearch.Move(-1)
-    WindowSearch.Move(-1)
-    Assert(visits[-1] = third, "Up did not wrap to the last window")
-    AssertPicker()
+    AssertPeek(second)
 
-    ; Regaining focus after a preview must not select the query for the next key to replace.
-    SendEvent("sec")
-    Assert(WindowSearch.edit.Value = "sec", "Typing across previews replaced the query: " WindowSearch.edit.Value)
-    Assert(visits[-1] = second, "Typing did not preview its first match")
-    Assert(SendMessage(0xB0, 0, 0, WindowSearch.edit) = (3 | 3 << 16), "Preview left the query selected")  ; EM_GETSEL
-    AssertPicker()
+    SendEvent("thi")
+    Assert(WindowSearch.edit.Value = "thi", "Typing did not reach the query: " WindowSearch.edit.Value)
+    Assert(SendMessage(0xB0, 0, 0, WindowSearch.edit) = (3 | 3 << 16), "Typing left the query selected")  ; EM_GETSEL
+    AssertPeek(third)
 
-    ; Query changes preview the new first match; no matches keep the picker usable.
+    ; Query changes peek the new first match; no matches keep the picker usable.
     WindowSearch.edit.Value := "second"
     WindowSearch.Update()
-    Assert(visits[-1] = second, "Filtering did not preview its first match")
-    AssertPicker()
-    count := visits.Length
-    WindowSearch.Update()
-    Assert(visits.Length = count, "Unchanged selection was activated again")
+    AssertPeek(second)
     WindowSearch.edit.Value := "no-such-window"
     WindowSearch.Update()
     WindowSearch.Move(1)
     WindowSearch.Pick(0)
-    Assert(visits.Length = count, "Empty results activated a window")
     AssertPicker()
-    AssertNoOutline("Empty results kept an outline")
+    AssertNoPeek("Empty results kept a peek")
+    Assert(!visits.Length, "Searching activated a window")
     PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(start), "Esc did not restore the origin")
 
-    ; Accept keeps the preview, including restored minimized windows.
-    WinMinimize(second)
+    ; Passing over windows leaves their Alt+Tab order alone: accepting puts only the pick in front.
+    WinActivate(third), WinActivate(second), WinActivate(start)
+    hwnds := [start, second, third]
     WindowSearch.Show(entries, Focus)
     WindowSearch.Move(1)
-    Assert(WinGetMinMax(second) != -1, "Preview did not restore a minimized window")
-    AssertPicker()
+    WindowSearch.Move(1)
+    WindowSearch.Move(-1)
+    WindowSearch.Move(1)
+    AssertPeek(third)
     WindowSearch.OnKeyDown(0x0D, 0, 0, WindowSearch.edit.Hwnd)
-    Assert(!WindowSearch.active && WinActive(second), "Enter did not accept the selection")
-
-    ; A selection change during a preview runs afterwards instead of overlapping it.
+    Assert(!WindowSearch.active && WinActive(third), "Enter did not accept the selection")
+    AssertNoPeek("Accept left the peek")
+    order := ZOrder(hwnds)
+    Assert(order[1] = 3 && order[2] = 1 && order[3] = 2, "Accept reordered skipped windows")
     WinActivate(start)
     WindowSearch.Show(entries, Focus)
-    move_during_preview := true
     WindowSearch.Move(1)
-    Assert(visits[-2] = second && visits[-1] = third, "Selection change during a preview was not previewed last")
-    AssertPicker()
     PressEsc(WindowSearch.window)
-    Assert(!WindowSearch.active && WinActive(start), "Esc after overlapping previews did not restore the origin")
+    order := ZOrder(hwnds)
+    Assert(order[1] = 1 && order[2] = 3 && order[3] = 2, "Cancel reordered skipped windows")
 
-    ; Held keys move at once but preview only after the repeat stops; Esc drops a pending preview.
+    ; Minimized windows are peeked without restoring them; accepting restores them.
+    WinMinimize(second)
+    WinActivate(start)
     WindowSearch.Show(entries, Focus)
-    count := visits.Length
-    Loop 2
-        WindowSearch.OnKeyDown(0x28, 0x40000000, 0, WindowSearch.edit.Hwnd)  ; repeated Down
-    Assert(WindowSearch.selected = 3 && visits.Length = count, "Held key previewed every repeat")
-    Sleep(300)
-    Assert(visits.Length = count + 1 && visits[-1] = third, "Held key did not preview after the repeat")
-    AssertPicker()
-    AssertOutline(third, WindowSearch.window.Hwnd)
-    WindowSearch.OnKeyDown(0x26, 0x40000000, 0, WindowSearch.edit.Hwnd)  ; repeated Up
-    AssertNoOutline("Held key left the outline on the previous preview")
-    PressEsc(WindowSearch.window)
-    Sleep(300)
-    Assert(!WindowSearch.active && WinActive(start) && visits[-1] = start, "Pending preview ran after cancel")
+    WindowSearch.Move(1)
+    AssertPeek(second)
+    Assert(WinGetMinMax(second) = -1, "Peek restored a minimized window")
+    WindowSearch.OnKeyDown(0x0D, 0, 0, WindowSearch.edit.Hwnd)
+    Assert(!WindowSearch.active && WinActive(second) && WinGetMinMax(second) != -1, "Enter did not restore a minimized pick")
 
-    ; Cross-process previews must also cancel through actual keyboard input.
+    ; Cross-process cancellation must also work through actual keyboard input.
     Run('"' A_AhkPath '" /ErrorStdOut "' A_ScriptDir '\window-search-fixture.ahk"', , , &fixture_pid)
     external_origin := WinWait("Search fixture origin ahk_pid " fixture_pid, , 5)
     external_preview := WinWait("Search fixture preview ahk_pid " fixture_pid, , 5)
@@ -171,23 +177,18 @@ try {
     WinActivate(external_origin)
     WindowSearch.Show(external_entries, Focus)
     WindowSearch.Move(1)
-    AssertPicker()
+    AssertPeek(external_preview)
     PressEsc(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(external_origin), "Cross-process Esc did not restore the origin")
 
-    ; A cancellation requested inside activation must win over its continuation.
+    ; Queued query updates must not peek again while restoring the origin.
     WinActivate(start)
-    WindowSearch.Show(entries, Focus)
-    cancel_during_preview := true
-    WindowSearch.Move(1)
-    Assert(!WindowSearch.active && WinActive(start), "In-flight preview overrode cancellation")
-
-    ; Queued query updates must not start another preview while restoring the origin.
     WindowSearch.Show(entries, Focus)
     WindowSearch.Move(1)
     change_during_finish := true
     WindowSearch.Cancel(WindowSearch.window)
     Assert(!WindowSearch.active && WinActive(start), "Query update overrode cancellation")
+    AssertNoPeek("Query update during cancellation left a peek")
 
     ; Native GUI close also uses the cancellation path rather than merely hiding.
     WindowSearch.Show(entries, Focus)
@@ -196,7 +197,7 @@ try {
     WinWaitNotActive(WindowSearch.window, , 2)
     Assert(!WindowSearch.active && WinActive(start), "Native close did not restore the origin")
 
-    ; Disabled previews keep the picker in front until a window is accepted.
+    ; Disabled previews show nothing until a window is accepted.
     WindowSearch.previews := false
     WinActivate(start)
     WindowSearch.Show(entries, Focus)
@@ -205,7 +206,7 @@ try {
     SendEvent("th")
     Assert(visits.Length = count, "Disabled previews activated a window")
     AssertPicker()
-    AssertNoOutline("Disabled previews outlined a background window")
+    AssertNoPeek("Disabled previews peeked a window")
     WindowSearch.OnKeyDown(0x0D, 0, 0, WindowSearch.edit.Hwnd)
     Assert(!WindowSearch.active && WinActive(third), "Enter without previews did not accept the selection")
     WinActivate(start)

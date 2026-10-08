@@ -71,11 +71,7 @@ SetWinDelay(10)
 configured_apps := []
 unconfigured_cycle := []
 cycle_session := false
-cycle_origin := 0
-cycle_origin_previous := 0
-search_origin := 0
-search_origin_previous := 0
-search_current := 0
+cycle_selected := 0
 InitializeWindowHistory()
 DllCall("RegisterShellHookWindow", "Ptr", A_ScriptHwnd)
 OnMessage(DllCall("RegisterWindowMessage", "Str", "SHELLHOOK", "UInt"), OnShellMessage)
@@ -252,7 +248,7 @@ InitializeWindowHistory() {
 }
 
 OnShellMessage(wParam, lParam, *) {
-    ; Notifications can arrive late (e.g. search previews after cancel/accept); only track the window still active.
+    ; Notifications can arrive late; only track the window still active.
     if ((wParam = 4 || wParam = 0x8004) && CycleableRoot(lParam) = GetActiveWindow())  ; HSHELL_WINDOWACTIVATED, HSHELL_RUDEAPPACTIVATED
         TrackActiveWindow(lParam)
 }
@@ -262,14 +258,7 @@ TrackActiveWindow(hwnd) {
     hwnd := CycleableRoot(hwnd)
     if (!hwnd || hwnd = current_window)
         return
-    ; Search previews and cycling are one visit, not separate picks.
-    if (WindowSearch.active || cycle_session) {
-        origin := WindowSearch.active ? search_origin : cycle_origin
-        origin_previous := WindowSearch.active ? search_origin_previous : cycle_origin_previous
-        previous_window := hwnd = origin ? origin_previous : origin
-    } else {
-        previous_window := current_window
-    }
+    previous_window := current_window
     current_window := hwnd
 }
 
@@ -292,9 +281,15 @@ SyncActiveWindow() {
     return active
 }
 
-SwitchToPreviousWindow(*) {
+; While cycling, the previewed selection stands in for the active window.
+CycleSelection() {
     active := SyncActiveWindow()
+    return cycle_session && cycle_selected ? cycle_selected : active
+}
+
+SwitchToPreviousWindow(*) {
     StopCycleSession()
+    active := SyncActiveWindow()
 
     target := previous_window
     if (!target || target = active || !IsCycleableWindow(target)) {
@@ -318,10 +313,10 @@ FocusOrRun(win_title, run_cmd, run_dir, *) {
         LaunchApp(run_cmd, run_dir)
         return
     }
-    active := SyncActiveWindow()
-    if IndexOf(hwnds, active) {
-        BeginCycleSession(active)
-        ActivateNextWindow(SortNumeric(hwnds), active, 1)
+    current := CycleSelection()
+    if IndexOf(hwnds, current) {
+        BeginCycleSession()
+        SelectNextWindow(SortNumeric(hwnds), current, 1)
         return
     }
     ; WinGetList returns windows in z-order, so the first is the most recently used.
@@ -343,27 +338,27 @@ SendKeys(keys, *) {
 }
 
 CycleCurrentApp(direction, *) {
-    if !(active := SyncActiveWindow())
+    if !(current := CycleSelection())
         return
-    try exe := WinGetProcessName(active)
+    try exe := WinGetProcessName(current)
     catch
         return
 
     hwnds := GetCycleableWindows("ahk_exe " exe)
     if (hwnds.Length < 2)
         return
-    BeginCycleSession(active)
-    ActivateNextWindow(SortNumeric(hwnds), active, direction)
+    BeginCycleSession()
+    SelectNextWindow(SortNumeric(hwnds), current, direction)
 }
 
-; Cycling stays one session until super is released, so the previous window is where it started.
-BeginCycleSession(active) {
-    global cycle_session, cycle_origin, cycle_origin_previous
+; Cycling previews windows until super is released; only the final selection is activated,
+; so history and the Windows Alt+Tab order skip the windows passed through.
+BeginCycleSession() {
+    global cycle_session, cycle_selected
     if cycle_session
         return
     cycle_session := true
-    cycle_origin := active
-    cycle_origin_previous := previous_window
+    cycle_selected := 0
     CycleStrip.Begin()
     SetTimer(EndCycleSession, 30)
 }
@@ -371,37 +366,36 @@ BeginCycleSession(active) {
 EndCycleSession() {
     if !IsSuperPressed()
         StopCycleSession()
-    else
-        WindowOutline.Refresh()
 }
 
+; Other hotkeys end the session too, so they act on the selected window.
 StopCycleSession() {
-    global cycle_session, cycle_origin, unconfigured_cycle
+    global cycle_session, cycle_selected, unconfigured_cycle
+    selected := cycle_session ? cycle_selected : 0
     cycle_session := false
-    cycle_origin := 0
+    cycle_selected := 0
     unconfigured_cycle := []
     SetTimer(EndCycleSession, 0)
+    ; Activate under the peek so the switch doesn't flash the previous window.
+    if (selected && selected != GetActiveWindow() && WinExist(selected))
+        ActivateWindow(selected)
     CycleStrip.Reset()
     WindowOutline.Hide()
+    WindowPeek.Hide()
 }
 
 ; The unconfigured-only list is fixed on the first press of a session.
 CycleUnconfigured(direction, *) {
     global unconfigured_cycle
-    active := SyncActiveWindow()
+    current := CycleSelection()
     if !unconfigured_cycle.Length {
         list := GetUnconfiguredWindows()
-        if (!list.Length || (list.Length = 1 && list[1] = active))
+        if (!list.Length || (list.Length = 1 && list[1] = current))
             return
-        ; A session without an origin would leave super + Tab nothing to return to.
-        if (!active && !cycle_session) {
-            ActivateNextWindow(list, active, direction)
-            return
-        }
         unconfigured_cycle := list
     }
-    BeginCycleSession(active)
-    ActivateNextWindow(unconfigured_cycle, active, direction)
+    BeginCycleSession()
+    SelectNextWindow(unconfigured_cycle, current, direction)
 }
 
 ; Cycleable windows no [app.*] match covers, in handle order.
@@ -425,14 +419,10 @@ ConfiguredAppName(hwnd) {
 
 ; Keep active last for fuzzy-score ties; the picker puts it first when the query is empty.
 SearchWindows(*) {
-    global search_origin, search_origin_previous, search_current
     if WindowSearch.active
         return
     StopCycleSession()
     active := SyncActiveWindow()
-    search_origin := active
-    search_origin_previous := previous_window
-    search_current := current_window
     entries := []
     last := 0
     for _, hwnd in GetCycleableWindows("") {
@@ -447,28 +437,8 @@ SearchWindows(*) {
     }
     if last
         entries.Push(last)
-    ; Re-activating the taskbar or desktop would leave the last preview in front.
-    WindowSearch.Show(entries, ActivateSearchWindow, EndSearchSession, active ? 0 : search_current)
-}
-
-ActivateSearchWindow(hwnd) {
-    ActivateWindow(hwnd)
-    ; Update before the picker regains focus, even if the shell hook is delayed.
-    TrackActiveWindow(GetActiveWindow())
-}
-
-EndSearchSession(activated := 0, cancelled := false) {
-    global current_window, previous_window
-    ; A click outside accepts that external focus without adding previews to history.
-    ; WM_ACTIVATE supplies the destination before GetForegroundWindow necessarily changes.
-    target := cancelled ? 0 : activated ? CycleableRoot(activated) : GetActiveWindow()
-    if target {
-        TrackActiveWindow(target)
-        return
-    }
-    ; Nothing was accepted (e.g. cancelled from the desktop), so previews leave no trace.
-    current_window := search_current
-    previous_window := search_origin_previous
+    ; Cancelling from the taskbar or desktop returns to the last focused window.
+    WindowSearch.Show(entries, ActivateWindow, active ? 0 : current_window)
 }
 
 IsCloaked(hwnd) {
@@ -478,39 +448,45 @@ IsCloaked(hwnd) {
 }
 
 CloseActiveWindow(*) {
-    global unconfigured_cycle
-    ; Keep the session so history still points at its origin, but drop views of the closed window.
+    global unconfigured_cycle, cycle_selected
+    ; While cycling, close the previewed window; the session continues from the active one.
+    target := cycle_session ? cycle_selected : 0
+    cycle_selected := 0
     unconfigured_cycle := []
     CycleStrip.Hide()
     WindowOutline.Hide()
-    ; Closing the desktop or taskbar would open the shutdown dialog.
+    WindowPeek.Hide()
     try {
-        active := WinGetID("A")
-        if CycleableRoot(active)
-            WinClose(active)
+        if !target {
+            target := WinGetID("A")
+            ; Closing the desktop or taskbar would open the shutdown dialog.
+            if !CycleableRoot(target)
+                return
+        }
+        WinClose(target)
     }
 }
 
-; Callers pass a stable order (e.g. by handle); z-order would just flip between the top two.
-ActivateNextWindow(hwnds, active, direction) {
-    current_index := IndexOf(hwnds, active)
+; Callers start a session first and pass a stable order (e.g. by handle).
+SelectNextWindow(hwnds, current, direction) {
+    global cycle_selected
+    current_index := IndexOf(hwnds, current)
     if (current_index = 0)
         next_index := direction > 0 ? 1 : hwnds.Length
     else
         next_index := WrapIndex(current_index, direction, hwnds.Length)
-    ; Drop the old outline now rather than after the activation delay.
-    WindowOutline.Hide()
-    ActivateWindow(hwnds[next_index])
-    ; The release timer could otherwise end the session between this check and showing overlays.
+    ; The release timer could otherwise end the session between selecting and showing overlays.
     Critical
-    if cycle_session {
-        selected := IndexOf(hwnds, GetActiveWindow())
-        if show_cycle_titles
-            CycleStrip.Show(hwnds, selected)
-        ; Outline the actual foreground popup if a modal dialog owns activation.
-        if (hwnds.Length > 1 && selected)
-            WindowOutline.Show(WinExist("A"), CycleStrip.window ? CycleStrip.window.Hwnd : 0)
-    }
+    cycle_selected := hwnds[next_index]
+    if (hwnds.Length < 2)
+        return
+    if show_cycle_titles
+        CycleStrip.Show(hwnds, next_index)
+    strip := CycleStrip.window && DllCall("IsWindowVisible", "Ptr", CycleStrip.window.Hwnd) ? CycleStrip.window.Hwnd : 0
+    if WindowPeek.Show(cycle_selected, strip)
+        WindowOutline.Show(WindowPeek.window.Hwnd, strip)
+    else
+        WindowOutline.Hide()
 }
 
 GetCycleableWindows(win_title) {

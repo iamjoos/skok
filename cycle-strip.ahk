@@ -12,7 +12,7 @@ class CycleStrip {
     static work_area := 0
     static theme := ""
 
-    ; Freeze placement and colors before the first activation, even if the origin moves or closes.
+    ; Freeze placement and colors before the first selection, even if the origin moves or closes.
     static Begin() {
         this.theme := WindowTheme.Refresh()
         WindowTheme.OverlayWorkArea(WinExist("A"), &left, &top, &right, &bottom)
@@ -25,7 +25,6 @@ class CycleStrip {
     }
 
     static Show(hwnds, selected) {
-        ; Do not claim that a window was selected if activation failed or a dialog intervened.
         if (hwnds.Length < 2 || !selected || !this.work_area) {
             this.Hide()
             return

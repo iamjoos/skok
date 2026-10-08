@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #Include %A_LineFile%\..\window-theme.ahk
 #Include %A_LineFile%\..\window-outline.ahk
+#Include %A_LineFile%\..\window-peek.ahk
 
 ; A focusable picker that fuzzy-filters window entries ({hwnd, app, exe, title, current}) as you type.
 class WindowSearch {
@@ -21,18 +22,11 @@ class WindowSearch {
     static first := 1
     static origin := 0
     static on_pick := 0
-    static on_hide := 0
     static active := false
     static closing := false
-    static cancelled := false
-    static finish_target := 0
-    static previewing := false
-    static preview_pending := false
-    static preview := 0
     static previews := true
-    static preview_timer := 0
 
-    static Show(entries, on_pick, on_hide := 0, origin := 0) {
+    static Show(entries, on_pick, origin := 0) {
         ; Repeated search hotkeys must not replace the origin with the picker itself.
         if this.active
             return
@@ -51,143 +45,64 @@ class WindowSearch {
             this.Prepare(entry)
         this.entries := entries
         this.on_pick := on_pick
-        this.on_hide := on_hide
         this.closing := false
-        this.cancelled := false
-        this.preview_pending := false
-        this.finish_target := 0
         this.edit.Value := ""
         this.Update()
-        ; The current window is already in front; re-activating it would only flicker.
-        this.preview := this.selected && this.matches[this.selected].current ? this.matches[this.selected].hwnd : 0
         this.active := true
         this.window.Show(WindowTheme.Placement(left, top, right, width) " h" this.height)
         WinActivate(this.window)
         this.edit.Focus()
-        this.Outline()
+        this.Peek()
     }
 
-    static Hide(activated := 0) {
+    static Hide() {
         this.closing := true
-        if this.preview_timer
-            SetTimer(this.preview_timer, 0)
         WindowOutline.Hide()
-        if (this.active && this.on_hide)
-            this.on_hide.Call(activated, this.cancelled)
+        WindowPeek.Hide()
         this.active := false
         if this.window
             this.window.Hide()
     }
 
     static Cancel(*) {
-        this.Finish(this.origin, true)
+        this.Finish(this.origin)
     }
 
-    ; Latch the outcome before activation can yield to a queued edit/key event.
-    static Finish(hwnd, cancelled := false) {
+    ; Only the outcome is activated; activating it before hiding keeps this process allowed to set the foreground window.
+    static Finish(hwnd) {
         if (!this.active || this.closing)
             return
         this.closing := true
-        this.cancelled := cancelled
-        this.finish_target := hwnd
-        ; Let an outstanding preview finish before restoring/accepting the target.
-        if !this.previewing
-            this.Complete()
-    }
-
-    static Complete() {
-        if (this.finish_target && WinExist(this.finish_target))
-            this.FocusWindow(this.finish_target)
+        if (hwnd && WinExist(hwnd))
+            this.on_pick.Call(hwnd)
         this.Hide()
     }
 
-    ; Activating the pick before hiding keeps this process allowed to set the foreground window.
     static Pick(index) {
         if (!this.active || this.closing || index < 1 || index > this.matches.Length)
             return
         this.Finish(this.matches[index].hwnd)
     }
 
-    ; Bring the selection forward underneath the picker, then keep typing in the edit.
-    static PreviewSelection() {
-        if (!this.previews || !this.active || this.closing)
-            return
-        ; Key/edit events can interrupt activation; defer them so previews never overlap.
-        if this.previewing {
-            this.preview_pending := true
-            return
-        }
-        this.previewing := true
-        try {
-            Loop {
-                this.preview_pending := false
-                if (this.closing || !this.selected)
-                    break
-                hwnd := this.matches[this.selected].hwnd
-                if (hwnd = this.preview || !WinExist(hwnd))
-                    break
-                WindowOutline.Hide()
-                this.on_pick.Call(hwnd)
-                if this.closing
-                    break
-                this.preview := hwnd
-                ; Dialog focus selects all edit text; keep the caret so the next key doesn't replace the query.
-                selection := SendMessage(0xB0, 0, 0, this.edit)  ; EM_GETSEL
-                ; WinActivate sleeps ~15 ms even without a WinDelay; it's only needed if Windows refuses.
-                if !(DllCall("SetForegroundWindow", "Ptr", this.window.Hwnd) && DllCall("GetForegroundWindow", "Ptr") = this.window.Hwnd) {
-                    ; No WinDelay: pumping keys while the text is selected would replace it.
-                    delay := A_WinDelay
-                    SetWinDelay(-1)
-                    try WinActivate(this.window)
-                    finally SetWinDelay(delay)
-                }
-                if this.closing
-                    break
-                this.edit.Focus()
-                SendMessage(0xB1, selection & 0xFFFF, selection >> 16, this.edit)  ; EM_SETSEL
-                if !this.preview_pending
-                    break
-            }
-            this.Outline()
-        } finally {
-            this.previewing := false
-            if (this.active && this.closing)
-                this.Complete()
-        }
-    }
-
-    ; Only a previewed selection is in front; the focused picker stays above its outline.
-    static Outline() {
+    ; Show the selection in place under the picker without activating it.
+    static Peek() {
         hwnd := this.selected ? this.matches[this.selected].hwnd : 0
-        if (this.previews && this.active && !this.closing && hwnd && hwnd = this.preview)
-            WindowOutline.Show(hwnd, this.window.Hwnd)
-        else
-            WindowOutline.Hide()
+        if (this.previews && this.active && !this.closing && hwnd && WindowPeek.Show(hwnd, this.window.Hwnd)) {
+            WindowOutline.Show(WindowPeek.window.Hwnd, this.window.Hwnd)
+            return
+        }
+        WindowOutline.Hide()
+        WindowPeek.Hide()
     }
 
-    ; Internal activations must not be mistaken for clicking away from the picker.
-    static FocusWindow(hwnd) {
-        this.previewing := true
-        try this.on_pick.Call(hwnd)
-        finally this.previewing := false
-    }
-
-    static Move(direction, repeat := false) {
+    static Move(direction) {
         if (!this.active || this.closing)
             return
         if !(count := this.matches.Length)
             return
         this.selected := Mod(this.selected - 1 + direction + count, count) + 1
         this.Render()
-        if !repeat {
-            this.PreviewSelection()
-            return
-        }
-        ; A held key repeats faster than a preview completes; preview once it is released.
-        this.Outline()
-        if !this.preview_timer
-            this.preview_timer := ObjBindMethod(this, "PreviewSelection")
-        SetTimer(this.preview_timer, -150)
+        this.Peek()
     }
 
     static Update(*) {
@@ -197,7 +112,7 @@ class WindowSearch {
         this.selected := this.matches.Length ? 1 : 0
         this.first := 1
         this.Render()
-        this.PreviewSelection()
+        this.Peek()
     }
 
     static Render() {
@@ -251,15 +166,14 @@ class WindowSearch {
         if !(this.active && this.edit && hwnd = this.edit.Hwnd)
             return
         ctrl := GetKeyState("Ctrl")
-        repeat := lParam & 0x40000000  ; key was already down
         if (vk = 0x0D)                                        ; Enter
             this.Pick(this.selected)
         else if (vk = 0x1B)                                   ; Esc
             this.Cancel()
         else if (vk = 0x28 || ctrl && (vk = 0x4A || vk = 0x4E))  ; Down, Ctrl+J, Ctrl+N
-            this.Move(1, repeat)
+            this.Move(1)
         else if (vk = 0x26 || ctrl && (vk = 0x4B || vk = 0x50))  ; Up, Ctrl+K, Ctrl+P
-            this.Move(-1, repeat)
+            this.Move(-1)
         else if (ctrl && vk >= 0x31 && vk <= 0x39)            ; Ctrl+1..9
             this.Pick(vk - 0x30)
         else if (ctrl && vk = 0x08)
@@ -278,8 +192,8 @@ class WindowSearch {
     }
 
     static OnActivate(wParam, lParam, msg, hwnd) {
-        if (this.active && !this.closing && !this.previewing && this.window && hwnd = this.window.Hwnd && !(wParam & 0xFFFF))  ; WA_INACTIVE
-            this.Hide(lParam)
+        if (this.active && !this.closing && this.window && hwnd = this.window.Hwnd && !(wParam & 0xFFFF))  ; WA_INACTIVE
+            this.Hide()
     }
 
     ; Empty queries put the current window first, then configured windows; otherwise use stable score ties.

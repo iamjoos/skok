@@ -43,11 +43,11 @@ An existing config is never overwritten or merged. Use the tray menu's **Suspend
 
 Hotkey values use AHK syntax: `!` is Alt, `+` Shift, `^` Ctrl. Minimized windows are restored when focused.
 
-Cycling counts as one visit: after releasing `super`, `super + Tab` returns to the window where the cycle began, not to each window passed through.
+Cycling previews windows in place (like [search](#window-search)) and only focuses the selected one when you release `super`, so it counts as one visit: `super + Tab` and the Windows `Alt + Tab` order return to the window where the cycle began, not to each window passed through. Other skok hotkeys pressed while cycling first focus the selection; `super + Backspace` closes the previewed window instead.
 
 ### Cycle strip
 
-While cycling, a click-through title strip lists the windows in order and highlights the current one, and the selected window is [outlined](#overlays). Both disappear when `super` is released. Disable the strip with `show_cycle_titles=0` under `[settings]`.
+While cycling, a click-through title strip lists the windows in order and highlights the selected one, which is previewed and [outlined](#overlays). All disappear when `super` is released. Disable the strip with `show_cycle_titles=0` under `[settings]`.
 
 ### Window search
 
@@ -62,7 +62,7 @@ With an empty query, the current window is the top result, whether configured or
 | Enter | Accept the selected window. |
 | Esc | Cancel and return to the window where search started (the last focused window if started from the taskbar or desktop). |
 
-The selected window is brought forward and [outlined](#overlays) as you type or navigate, while the search box keeps keyboard focus. Previews count as one visit: after accepting, `super + Tab` returns to the starting window; cancelling leaves previous-window history unchanged. Restored minimized windows stay restored on cancel. Disable previews with `preview_search_selection=0` under `[settings]`; the selected window is then only focused when accepted.
+As you type or navigate, the selected window is previewed in place: a live, click-through thumbnail is drawn over its visible frame and [outlined](#overlays), while the search box keeps keyboard focus. Minimized windows are previewed centered on their display without being restored. Nothing is activated until you accept, so `super + Tab` and the Windows Alt+Tab order only see the accepted window, and cancelling changes neither. Disable previews with `preview_search_selection=0` under `[settings]`.
 
 Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Clicking another window closes search without returning to the starting window.
 
@@ -70,7 +70,7 @@ Up to 20 results are shown (fewer if the monitor is small); a footer shows how m
 
 The cycle strip and search open at the top of the Windows primary (main) display. Set `overlay_display=active` under `[settings]` to use the display of the window that was active when cycling or search started instead. Either way, they stay put while selecting windows on other displays.
 
-An outline around the selected window makes it easy to find across displays. It follows the window's visible frame without moving, resizing, focusing or blocking clicks on the window. Disable it with `highlight_selection=0`.
+An outline around the selected window's preview makes it easy to find across displays. Previews and outlines never move, resize or focus windows, nor block clicks. Disable the outline with `highlight_selection=0`.
 
 Overlays use the Windows accent color. Set `theme=system` (default), `theme=light` or `theme=dark` to follow Windows' app light/dark preference or force a theme. System theme and accent changes are picked up when cycling or search next starts. Invalid `overlay_display` and `theme` values are reported at startup and fall back to `primary` and `system`. Reload after changing settings.
 

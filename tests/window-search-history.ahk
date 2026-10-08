@@ -6,70 +6,60 @@ windows := []
 cycle_session := false
 current_window := 0
 previous_window := 0
-search_origin := 0
-search_origin_previous := 0
-search_current := 0
 exit_code := 0
 try {
     AddTestWindows(windows, "Search history test", 3)
     origin := windows[1].Hwnd
     prior := windows[2].Hwnd
-    preview := windows[3].Hwnd
+    picked := windows[3].Hwnd
     entries := [
-        {hwnd: preview, app: "Preview", exe: "test", title: "Preview", current: false},
+        {hwnd: picked, app: "Picked", exe: "test", title: "Picked", current: false},
         {hwnd: origin, app: "Origin", exe: "test", title: "Origin", current: true}
     ]
+    ; SyncActiveWindow stands in for the shell hook, which the tests don't register.
     WinActivate(origin)
     current_window := origin
     previous_window := prior
-    search_origin := origin
-    search_origin_previous := prior
-    search_current := origin
-    WindowSearch.Show(entries, ActivateSearchWindow, EndSearchSession)
+    WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
-    Assert(current_window = preview && previous_window = origin, "Preview history lost the origin")
+    SyncActiveWindow()
+    Assert(current_window = origin && previous_window = prior, "Peek changed history")
     PressEsc(WindowSearch.window)
-    Assert(current_window = origin && previous_window = prior, "Cancel did not restore history")
-    ; A queued preview event must not resurrect a cancelled visit.
-    OnShellMessage(4, preview)
-    OnShellMessage(0x8004, origin)
-    Assert(current_window = origin && previous_window = prior, "Delayed preview corrupted cancel history")
+    SyncActiveWindow()
+    Assert(current_window = origin && previous_window = prior, "Cancel changed history")
 
-    WindowSearch.Show(entries, ActivateSearchWindow, EndSearchSession)
+    WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
     WindowSearch.Pick(WindowSearch.selected)
-    OnShellMessage(4, origin)
-    OnShellMessage(0x8004, preview)
-    Assert(current_window = preview && previous_window = origin, "Accept did not retain origin history")
+    SyncActiveWindow()
+    Assert(current_window = picked && previous_window = origin, "Accept did not record one visit from the origin")
 
-    ; Clicking away commits the external focus, not the last preview, as one visit.
+    ; Clicking away commits the external focus, not the peeked window.
     WinActivate(origin)
-    current_window := origin
-    previous_window := prior
-    WindowSearch.Show(entries, ActivateSearchWindow, EndSearchSession)
+    SyncActiveWindow()
+    WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
     WinActivate(prior)
+    SyncActiveWindow()
     Assert(!WindowSearch.active, "External focus did not dismiss search")
-    Assert(current_window = prior && previous_window = origin, "External dismissal retained a preview in history")
+    Assert(current_window = prior && previous_window = origin, "External dismissal recorded the peeked window")
 
-    ; Cancelling from a non-cycleable window (like the taskbar) returns to the last focused window without previews in history.
+    ; Cancelling from a non-cycleable window (like the taskbar) returns to the last focused window.
     tool := Gui("+ToolWindow", "Search history tool window")
     windows.Push(tool)
     tool.Show("w240 h100")
-    WinActivate(tool)
+    WinActivate(origin)
     current_window := origin
     previous_window := prior
-    search_origin := 0
-    search_origin_previous := prior
-    search_current := origin
+    WinActivate(tool)
     tool_entries := [
         {hwnd: origin, app: "Origin", exe: "test", title: "Origin", current: false},
-        {hwnd: preview, app: "Preview", exe: "test", title: "Preview", current: false}
+        {hwnd: picked, app: "Picked", exe: "test", title: "Picked", current: false}
     ]
-    WindowSearch.Show(tool_entries, ActivateSearchWindow, EndSearchSession, search_current)
+    WindowSearch.Show(tool_entries, ActivateWindow, current_window)
     WindowSearch.Move(1)
-    Assert(current_window = preview, "Preview from a non-cycleable origin was not tracked")
     PressEsc(WindowSearch.window)
+    SyncActiveWindow()
     Assert(WinActive(origin), "Cancel did not return to the last focused window")
     Assert(current_window = origin && previous_window = prior, "Cancel from a non-cycleable origin changed history")
     FileAppend("Window search history tests passed.`n", "*")

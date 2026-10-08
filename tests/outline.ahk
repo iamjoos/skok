@@ -44,3 +44,41 @@ AssertNoOutline(message) {
     for _, bar in WindowOutline.bars
         Assert(!DllCall("IsWindowVisible", "Ptr", bar.Hwnd), message)
 }
+
+; The window is shown in place, under its overlay and outline, without being activated.
+AssertPeekShown(hwnd, overlay := 0, outlined := true) {
+    AssertEqual(WindowPeek.target, hwnd)
+    peek := WindowPeek.window.Hwnd
+    Assert(DllCall("IsWindowVisible", "Ptr", peek), "Peek is hidden")
+    Assert((WinGetExStyle(peek) & 0x080800A0) = 0x080800A0, "Peek is not click-through/nonactivating")
+    if overlay
+        Assert(IsAbove(overlay, peek), "Peek covers its overlay")
+    PhysicalPos(peek, &x, &y, &w, &h)
+    if (WinGetMinMax(hwnd) = -1) {
+        Assert(w > 0 && h > 0, "Minimized peek is empty")
+    } else {
+        Assert(WindowOutline.FrameRect(hwnd, &left, &top, &width, &height), "Could not read peek target frame")
+        Assert(x = left && y = top && w = width && h = height, "Peek does not cover the visible frame")
+    }
+    if outlined
+        AssertOutline(peek, overlay)
+    else
+        AssertNoOutline("Disabled highlight outlined the peek")
+}
+
+AssertNoPeek(message) {
+    Assert(!WindowPeek.target, message)
+    if WindowPeek.window
+        Assert(!DllCall("IsWindowVisible", "Ptr", WindowPeek.window.Hwnd), message)
+    AssertNoOutline(message)
+}
+
+; Positions of the given windows in z-order, the order Alt+Tab follows after activations.
+ZOrder(hwnds) {
+    order := []
+    for _, hwnd in WinGetList()
+        for i, candidate in hwnds
+            if (candidate = hwnd)
+                order.Push(i)
+    return order
+}
