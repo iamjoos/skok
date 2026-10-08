@@ -1,9 +1,11 @@
 #Requires AutoHotkey v2.0
 #Include lib.ahk
+#Include outline.ahk
 
 original := WinExist("A")
 windows := []
 cycle_session := false
+configured_apps := []
 current_window := 0
 previous_window := 0
 exit_code := 0
@@ -27,6 +29,30 @@ try {
     PressEsc(WindowSearch.window)
     SyncActiveWindow()
     Assert(current_window = origin && previous_window = prior, "Cancel changed history")
+
+    ; The shortcut cancels through the same path as Esc, even after filtering to another window.
+    SearchWindows()
+    Assert(WindowSearch.active && WinActive(WindowSearch.window), "Shortcut did not open search")
+    AssertEqual(WindowSearch.origin, origin)
+    WindowSearch.edit.Value := "Search history test 3"
+    WindowSearch.Update()
+    AssertEqual(WindowSearch.matches.Length, 1)
+    AssertPeekShown(picked, WindowSearch.window.Hwnd)
+    SearchWindows()
+    SyncActiveWindow()
+    Assert(!WindowSearch.active, "Repeated shortcut did not cancel search")
+    Assert(!DllCall("IsWindowVisible", "Ptr", WindowSearch.window.Hwnd), "Cancelled picker is visible")
+    Assert(WinActive(origin), "Repeated shortcut did not restore the origin")
+    AssertNoPeek("Repeated shortcut left preview or outline visible")
+    Assert(current_window = origin && previous_window = prior, "Repeated shortcut changed history")
+    SearchWindows()
+    Assert(WindowSearch.active && WinActive(WindowSearch.window), "Shortcut did not reopen search")
+    AssertEqual(WindowSearch.edit.Value, "")
+    WindowSearch.edit.Value := "no matching search history window"
+    WindowSearch.Update()
+    AssertEqual(WindowSearch.matches.Length, 0)
+    SearchWindows()
+    Assert(!WindowSearch.active && WinActive(origin), "Repeated shortcut did not cancel an empty search")
 
     WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
@@ -62,6 +88,13 @@ try {
     SyncActiveWindow()
     Assert(WinActive(origin), "Cancel did not return to the last focused window")
     Assert(current_window = origin && previous_window = prior, "Cancel from a non-cycleable origin changed history")
+    WinActivate(tool)
+    SearchWindows()
+    AssertEqual(WindowSearch.origin, origin)
+    SearchWindows()
+    SyncActiveWindow()
+    Assert(!WindowSearch.active && WinActive(origin), "Repeated shortcut did not restore the last focused window")
+    Assert(current_window = origin && previous_window = prior, "Repeated shortcut from a non-cycleable origin changed history")
     FileAppend("Window search history tests passed.`n", "*")
 } catch as err {
     exit_code := 1

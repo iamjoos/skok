@@ -27,7 +27,7 @@ class WindowSearch {
     static previews := true
 
     static Show(entries, on_pick, origin := 0) {
-        ; Repeated search hotkeys must not replace the origin with the picker itself.
+        ; Repeated Show calls must not replace the origin with the picker itself.
         if this.active
             return
         theme := WindowTheme.Refresh()

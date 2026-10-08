@@ -419,8 +419,10 @@ ConfiguredAppName(hwnd) {
 
 ; Keep active last for fuzzy-score ties; the picker puts it first when the query is empty.
 SearchWindows(*) {
-    if WindowSearch.active
+    if WindowSearch.active {
+        WindowSearch.Cancel()
         return
+    }
     StopCycleSession()
     active := SyncActiveWindow()
     entries := []

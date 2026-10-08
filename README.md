@@ -39,7 +39,7 @@ An existing config is never overwritten or merged. Use the tray menu's **Suspend
 | `super + j` / `k` | Cycle windows of the active app. | `cycle_app_windows_hotkey`, `reverse_cycle_app_windows_hotkey` |
 | `super + l` / `h` | Cycle windows with no matching `[app.*]` section. | `cycle_unconfigured_hotkey`, `reverse_cycle_unconfigured_hotkey` |
 | `super + Backspace` | Ask the active window to close (it may prompt to save). | `close_window_hotkey` |
-| `super + /` | Open window search. | `search_windows_hotkey` |
+| `super + /` | Open window search, or cancel it if already open. | `search_windows_hotkey` |
 
 Hotkey values use AHK syntax: `!` is Alt, `+` Shift, `^` Ctrl. Minimized windows are restored when focused.
 
@@ -60,7 +60,7 @@ With an empty query, the current window is the top result, whether configured or
 | Up / Down, Ctrl + K / J, Ctrl + P / N | Move selection (and preview its window). |
 | Ctrl + 1..9 | Accept the numbered result. |
 | Enter | Accept the selected window. |
-| Esc | Cancel and return to the window where search started (the last focused window if started from the taskbar or desktop). |
+| Esc or the search shortcut again | Cancel and return to the window where search started (the last focused window if started from the taskbar or desktop). |
 
 As you type or navigate, the selected window is previewed in place: a live, click-through thumbnail is drawn over its visible frame and [outlined](#overlays), while the search box keeps keyboard focus. Minimized windows are previewed centered on their display without being restored. Nothing is activated until you accept, so `super + Tab` and the Windows Alt+Tab order only see the accepted window, and cancelling changes neither. Disable previews with `preview_search_selection=0` under `[settings]`.
 
