@@ -19,6 +19,7 @@ class WindowSearch {
     static entries := []
     static matches := []
     static selected := 0
+    static digits := ""
     static first := 1
     static origin := 0
     static on_pick := 0
@@ -46,6 +47,7 @@ class WindowSearch {
         this.entries := entries
         this.on_pick := on_pick
         this.closing := false
+        this.digits := ""
         this.edit.Value := ""
         this.Update()
         this.active := true
@@ -57,6 +59,7 @@ class WindowSearch {
 
     static Hide() {
         this.closing := true
+        this.digits := ""
         WindowOutline.Hide()
         WindowPeek.Hide()
         this.active := false
@@ -166,6 +169,13 @@ class WindowSearch {
         if !(this.active && this.edit && hwnd = this.edit.Hwnd)
             return
         ctrl := GetKeyState("Ctrl")
+        if (ctrl && vk >= 0x30 && vk <= 0x39) {               ; Ctrl+0..9
+            if !(lParam & 0x40000000)                         ; not auto-repeat
+                this.TypeDigit(vk - 0x30)
+            return 0
+        }
+        if (vk != 0x11)                                       ; held Ctrl auto-repeats
+            this.digits := ""
         if (vk = 0x0D)                                        ; Enter
             this.Pick(this.selected)
         else if (vk = 0x1B)                                   ; Esc
@@ -174,13 +184,38 @@ class WindowSearch {
             this.Move(1)
         else if (vk = 0x26 || ctrl && (vk = 0x4B || vk = 0x50))  ; Up, Ctrl+K, Ctrl+P
             this.Move(-1)
-        else if (ctrl && vk >= 0x31 && vk <= 0x39)            ; Ctrl+1..9
-            this.Pick(vk - 0x30)
         else if (ctrl && vk = 0x08)
             this.DeleteWord()
         else
             return
         return 0
+    }
+
+    static OnKeyUp(vk, lParam, msg, hwnd) {
+        if !(this.active && this.edit && hwnd = this.edit.Hwnd && vk = 0x11 && this.digits != "")
+            return
+        index := Integer(this.digits)
+        this.digits := ""
+        this.Pick(index)
+    }
+
+    ; Digits typed while Ctrl is held build a result number, picked on Ctrl release or once no digit can extend it.
+    ; A digit that would overshoot the results starts a new number.
+    static TypeDigit(digit) {
+        count := this.matches.Length
+        number := Integer(this.digits digit)
+        if (number > count)
+            number := digit
+        if (number < 1 || number > count) {
+            this.digits := ""
+            return
+        }
+        if (number * 10 > count)
+            return this.Pick(number)
+        this.digits := String(number)
+        this.selected := number
+        this.Render()
+        this.Peek()
     }
 
     ; A plain Edit inserts a box character for Ctrl+Backspace instead of deleting a word.
@@ -333,6 +368,7 @@ class WindowSearch {
             this.window.Destroy()
         } else {
             OnMessage(0x0100, ObjBindMethod(this, "OnKeyDown"))   ; WM_KEYDOWN
+            OnMessage(0x0101, ObjBindMethod(this, "OnKeyUp"))     ; WM_KEYUP
             OnMessage(0x0006, ObjBindMethod(this, "OnActivate"))  ; WM_ACTIVATE
         }
         this.window := WindowTheme.NewPopup("skok window search", "", WindowTheme.search_font_size)

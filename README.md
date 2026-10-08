@@ -58,9 +58,12 @@ With an empty query, the current window is the top result, whether configured or
 | Key | Action |
 | --- | --- |
 | Up / Down, Ctrl + K / J, Ctrl + P / N | Move selection (and preview its window). |
-| Ctrl + 1..9 | Accept the numbered result. |
+| Ctrl + number | Accept the numbered result (see below). |
+| Ctrl + Backspace | Delete the previous word of the query. |
 | Enter | Accept the selected window. |
 | Esc or the search shortcut again | Cancel and return to the window where search started (the last focused window if started from the taskbar or desktop). |
+
+To accept a result by number, hold Ctrl and type its digits, then release Ctrl. With fewer than 10 results, `Ctrl + 3` accepts result 3 immediately. With more, a digit that could start a longer number only selects (and previews) that result until you release Ctrl or type the next digit: `Ctrl + 1`, `2` accepts result 12, and `Ctrl + 1` then releasing Ctrl accepts result 1. A number is accepted as soon as no further digit could fit, so with 15 results `Ctrl + 3` accepts result 3 without waiting. Pressing any other key while Ctrl is held drops the pending number; a digit beyond the last result starts a new number.
 
 As you type or navigate, the selected window is previewed in place: a live, click-through thumbnail is drawn over its visible frame and [outlined](#overlays), while the search box keeps keyboard focus. Minimized windows are previewed centered on their display without being restored. Nothing is activated until you accept, so `super + Space` and the Windows Alt+Tab order only see the accepted window, and cancelling changes neither. Disable previews with `preview_search_selection=0` under `[settings]`.
 

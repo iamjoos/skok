@@ -216,6 +216,37 @@ try {
     Assert(!WindowSearch.active && WinActive(start), "Esc without previews did not restore the origin")
     WindowSearch.previews := true
 
+    ; Ctrl+digits pick on release, or at once when no further digit fits.
+    numbered := [{hwnd: start, app: "Start", exe: "test", title: "Start", current: true}]
+    Loop 10
+        numbered.Push({hwnd: second, app: "Second", exe: "test", title: "Second " A_Index, current: false})
+    numbered.Push({hwnd: third, app: "Third", exe: "test", title: "Third", current: false})
+    WinActivate(start)
+    WindowSearch.Show(numbered, Focus)
+    SendEvent("{Ctrl down}1")
+    AssertPeek(start)
+    Assert(WindowSearch.digits = "1", "Ctrl+1 did not wait for another digit")
+    SendEvent("{Blind}2")
+    Assert(!WindowSearch.active && WinActive(third), "Ctrl+1 2 did not pick result 12")
+    SendEvent("{Ctrl up}")
+    WinActivate(start)
+    WindowSearch.Show(numbered, Focus)
+    count := visits.Length
+    SendEvent("{Ctrl down}1{Ctrl up}")
+    Assert(!WindowSearch.active && visits.Length = count + 1 && visits[visits.Length] = start, "Ctrl+1 release did not pick result 1")
+    WindowSearch.Show(numbered, Focus)
+    SendEvent("{Ctrl down}3")
+    Assert(!WindowSearch.active && WinActive(second), "Ctrl+3 did not pick at once")
+    SendEvent("{Ctrl up}")
+    WinActivate(start)
+    WindowSearch.Show(numbered, Focus)
+    SendEvent("{Ctrl down}0{Ctrl up}")
+    AssertPicker()
+    SendEvent("{Ctrl down}1{Down}{Ctrl up}")
+    AssertPeek(second)
+    Assert(WindowSearch.selected = 2 && WindowSearch.digits = "", "Another key did not cancel the pending number")
+    PressEsc(WindowSearch.window)
+    Assert(!WindowSearch.active && WinActive(start), "Esc after a cancelled number did not restore the origin")
     ; External focus dismisses without snapping back; closed origins are safe to cancel.
     WinActivate(start)
     WindowSearch.Show(entries, Focus)
