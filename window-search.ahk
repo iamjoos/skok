@@ -289,8 +289,12 @@ class WindowSearch {
         }
         total := 0
         scored := Map()
-        for _, term in terms
-            total += this.ScoreTerm(term, entry, scored).best
+        for _, term in terms {
+            score := this.ScoreTerm(term, entry, scored).best
+            if (score <= 0)
+                return -1
+            total += score
+        }
         ; Keep only the current terms so the cache stays one query deep.
         entry.terms := scored
         return total
@@ -358,7 +362,7 @@ class WindowSearch {
             for _, score in prev
                 if (score > best)
                     best := score
-            best := best = NONE ? -1 : Max(best, 0)
+            best := best = NONE ? -1 : best
         }
         return scored[term] := {prev: prev, run: run, best: best}
     }

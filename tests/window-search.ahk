@@ -35,6 +35,7 @@ try {
     AssertOrder([Entry(1, "", false, "ab"), Entry(2, "", false, "ba")], "abb", [])
     AssertOrder([Entry(1, "", false, "a-x-b"), Entry(2, "", false, "ba")], "ab", [1])
     AssertOrder([Entry(1, "vscode", false, "README.md"), Entry(2, "", false, "vscode")], "rdm vscode", [1])
+    AssertOrder([Entry(1, "", false, "abcdexxxxdfgxxxxe"), Entry(2, "", false, "edge")], "edge", [2])
     ; Rows cached from earlier keystrokes must give the same order as scoring from scratch.
     Fresh() => [Entry(1, "", false, "b-a-ab"), Entry(2, "", false, "abab"), Entry(3, "", false, "b ab"), Entry(4, "", false, "Ab Ba")]
     typed := Fresh()
