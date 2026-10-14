@@ -5,9 +5,13 @@
 original := WinExist("A")
 windows := []
 cycle_session := false
+cycle_selected := 0
+unconfigured_cycle := []
 configured_apps := []
 current_window := 0
 previous_window := 0
+show_cycle_titles := true
+super_key := "F24"
 exit_code := 0
 try {
     AddTestWindows(windows, "Search history test", 3)
@@ -95,11 +99,66 @@ try {
     SyncActiveWindow()
     Assert(!WindowSearch.active && WinActive(origin), "Repeated shortcut did not restore the last focused window")
     Assert(current_window = origin && previous_window = prior, "Repeated shortcut from a non-cycleable origin changed history")
+
+    ; Other skok shortcuts cancel search first, restoring the origin before running.
+    WindowSearch.Show(entries, ActivateWindow)
+    WindowSearch.Move(1)
+    SwitchToPreviousWindow()
+    SyncActiveWindow()
+    Assert(!WindowSearch.active && WinActive(prior), "Previous-window shortcut did not cancel search and switch")
+    Assert(current_window = prior && previous_window = origin, "Previous-window shortcut from search corrupted history")
+
+    WinActivate(origin)
+    current_window := origin
+    previous_window := prior
+    WindowSearch.Show(entries, ActivateWindow)
+    WindowSearch.Move(1)
+    FocusOrRun("ahk_id " origin, "unused", "")
+    Assert(!WindowSearch.active && !cycle_session && WinActive(origin), "Single-window app shortcut did not cancel search to origin")
+    WindowSearch.Show(entries, ActivateWindow)
+    WindowSearch.Move(1)
+    FocusOrRun("ahk_id " picked, "unused", "")
+    SyncActiveWindow()
+    Assert(!WindowSearch.active && WinActive(picked), "App shortcut did not cancel search and focus target")
+    Assert(current_window = picked && previous_window = origin, "App shortcut from search recorded the previewed window")
+
+    WinActivate(origin), SyncActiveWindow()
+    WindowSearch.Show(entries, ActivateWindow)
+    WindowSearch.Move(1)
+    CycleCurrentApp(1)
+    SetTimer(EndCycleSession, 0)
+    Critical "Off"
+    Assert(!WindowSearch.active && !DllCall("IsWindowVisible", "Ptr", WindowSearch.window.Hwnd), "App cycling did not cancel search")
+    Assert(cycle_session && WinActive(origin) && cycle_selected != origin, "App cycling from search did not start from origin")
+    AssertPeekShown(cycle_selected, CycleStrip.window.Hwnd)
+    StopCycleSession()
+
+    WinActivate(origin), SyncActiveWindow()
+    WindowSearch.Show(entries, ActivateWindow)
+    WindowSearch.Move(1)
+    CycleUnconfigured(1)
+    SetTimer(EndCycleSession, 0)
+    Critical "Off"
+    Assert(!WindowSearch.active && !DllCall("IsWindowVisible", "Ptr", WindowSearch.window.Hwnd), "Unconfigured cycling did not cancel search")
+    Assert(cycle_session && WinActive(origin) && cycle_selected != origin, "Unconfigured cycling from search did not start from origin")
+    StopCycleSession()
+
+    AddTestWindows(windows, "Search history disposable", 1)
+    disposable := windows[-1].Hwnd
+    WinActivate(disposable), SyncActiveWindow()
+    WindowSearch.Show(entries, ActivateWindow)
+    WindowSearch.Move(1)
+    CloseActiveWindow()
+    Assert(!WindowSearch.active, "Close shortcut did not cancel search")
+    Assert(WinWaitClose(disposable, , 2), "Close shortcut from search did not close the origin window")
+    Assert(WinExist(picked) && WinExist(origin), "Close shortcut from search closed a search entry")
+
     FileAppend("Window search history tests passed.`n", "*")
 } catch as err {
     exit_code := 1
     ReportError(err, "window-search-history")
 } finally {
+    StopCycleSession()
     WindowSearch.Hide()
     for _, window in windows
         try window.Destroy()

@@ -283,6 +283,7 @@ SyncActiveWindow() {
 
 ; While cycling, the previewed selection stands in for the active window.
 CycleSelection() {
+    WindowSearch.Cancel()
     active := SyncActiveWindow()
     return cycle_session && cycle_selected ? cycle_selected : active
 }
@@ -373,6 +374,7 @@ EndCycleSession() {
 ; Other hotkeys end the session too, so they act on the selected window.
 StopCycleSession() {
     global cycle_session, cycle_selected, unconfigured_cycle
+    WindowSearch.Cancel()
     selected := cycle_session ? cycle_selected : 0
     cycle_session := false
     cycle_selected := 0
@@ -453,6 +455,7 @@ IsCloaked(hwnd) {
 
 CloseActiveWindow(*) {
     global unconfigured_cycle, cycle_selected
+    WindowSearch.Cancel()
     ; While cycling, close the previewed window; the session continues from the active one.
     target := cycle_session ? cycle_selected : 0
     cycle_selected := 0
