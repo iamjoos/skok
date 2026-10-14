@@ -315,6 +315,8 @@ FocusOrRun(win_title, run_cmd, run_dir, *) {
     }
     current := CycleSelection()
     if IndexOf(hwnds, current) {
+        if (hwnds.Length < 2)
+            return
         BeginCycleSession()
         SelectNextWindow(SortNumeric(hwnds), current, 1)
         return
@@ -480,8 +482,6 @@ SelectNextWindow(hwnds, current, direction) {
     ; The release timer could otherwise end the session between selecting and showing overlays.
     Critical
     cycle_selected := hwnds[next_index]
-    if (hwnds.Length < 2)
-        return
     if show_cycle_titles
         CycleStrip.Show(hwnds, next_index)
     strip := CycleStrip.window && DllCall("IsWindowVisible", "Ptr", CycleStrip.window.Hwnd) ? CycleStrip.window.Hwnd : 0

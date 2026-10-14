@@ -204,6 +204,21 @@ try {
     WindowOutline.enabled := true
     show_cycle_titles := true
 
+    ; Focusing an already-active single window starts no session; a single unconfigured target still peeks.
+    WinActivate(origin)
+    FocusOrRun("ahk_id " origin, "unused", "")
+    Assert(!cycle_session, "Single active app window started a cycle session")
+    AssertHidden()
+    BeginCycleSession()
+    SetTimer(EndCycleSession, 0)
+    SelectNextWindow([target], origin, 1)
+    Critical "Off"
+    AssertCyclePeek(target, origin)
+    Assert(!DllCall("IsWindowVisible", "Ptr", CycleStrip.window.Hwnd), "Single-window peek showed the title strip")
+    EndCycleSession()
+    AssertHidden()
+    Assert(WinActive(target), "Release did not activate the single unconfigured target")
+
     ; Closing the origin cannot move the strip; closing the selection clears its views.
     WindowTheme.SetDisplay("active")
     WinActivate(origin)
