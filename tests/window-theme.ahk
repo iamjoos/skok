@@ -57,6 +57,22 @@ try {
             throw Error("Invalid theme was accepted: '" mode "'.")
         AssertEqual(WindowTheme.mode, "system")
     }
+
+    fixture := Gui(, "Icon theme test")
+    fixture.Show("w120 h60 NA")
+    try {
+        icon := WindowTheme.WindowIcon(fixture.Hwnd)
+        Assert(icon != 0, "Window icon was not resolved.")
+        AssertEqual(WindowTheme.WindowIcon(fixture.Hwnd), icon)
+        fallback := WindowTheme.WindowIcon(0)
+        Assert(fallback != 0, "Fallback icon was not resolved.")
+        AssertEqual(WindowTheme.WindowIcon(0), fallback)
+        cell := WindowTheme.AddIconCell(fixture, 8)
+        WindowTheme.SetIcon(cell, icon)
+        AssertEqual(SendMessage(0x171, 0, 0, cell), icon)  ; STM_GETICON
+    } finally {
+        fixture.Destroy()
+    }
     FileAppend("Window theme tests passed.`n", "*")
     ExitApp(0)
 } catch as err {

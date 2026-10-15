@@ -61,6 +61,8 @@ try {
             Assert(strip_left = expected_left && strip_top = expected_top
                 && strip_right = expected_right && strip_bottom = expected_bottom, "Strip opened on the wrong display")
             WinGetPos(&strip_x, &strip_y, , , CycleStrip.window)
+            Assert(SendMessage(0x171, 0, 0, CycleStrip.icons[1]) != 0, "Cycle strip row 1 had no icon")
+            Assert(SendMessage(0x171, 0, 0, CycleStrip.icons[2]) != 0, "Cycle strip row 2 had no icon")
             ; The origin can move to a different monitor without moving the anchored strip.
             WinMove(primary_left + 40, primary_top + 40, , , origin)
             SelectNextWindow(hwnds, target, -1)

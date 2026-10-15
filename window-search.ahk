@@ -9,6 +9,7 @@ class WindowSearch {
     static edit := 0
     static overflow := 0
     static numbers := []
+    static icons := []
     static labels := []
     static titles := []
     static styles := []
@@ -42,8 +43,11 @@ class WindowSearch {
         if (this.size != width ":" capacity ":" theme)
             this.Build(width, capacity, theme)
 
-        for _, entry in entries
+        for _, entry in entries {
+            if !entry.HasOwnProp("icon")
+                entry.icon := WindowTheme.WindowIcon(entry.hwnd)
             this.Prepare(entry)
+        }
         this.entries := entries
         this.on_pick := on_pick
         this.closing := false
@@ -128,6 +132,7 @@ class WindowSearch {
             index := this.first + A_Index - 1
             entry := this.matches[index]
             WindowTheme.SetText(this.numbers[A_Index], index)
+            WindowTheme.SetIcon(this.icons[A_Index], entry.icon)
             WindowTheme.SetText(this.labels[A_Index], entry.app != "" ? entry.app : entry.exe)
             WindowTheme.SetText(this.titles[A_Index], entry.title)
             this.Style(A_Index, index = this.selected, entry.app != "")
@@ -160,6 +165,7 @@ class WindowSearch {
         if (this.styles[row] = state)
             return
         this.styles[row] := state
+        WindowTheme.StyleIcon(this.icons[row], selected)
         WindowTheme.StyleCell(this.numbers[row], selected)
         WindowTheme.StyleCell(this.labels[row], selected, configured ? WindowTheme.configured_text : WindowTheme.unconfigured_text)
         WindowTheme.StyleCell(this.titles[row], selected)
@@ -393,12 +399,13 @@ class WindowSearch {
         this.rows_top := s(8) + panel_h + s(8)
 
         this.window.SetFont("s" WindowTheme.row_font_size " norm c" WindowTheme.text, WindowTheme.font_face)
-        this.numbers := [], this.labels := [], this.titles := [], this.styles := []
+        this.numbers := [], this.icons := [], this.labels := [], this.titles := [], this.styles := []
         Loop capacity {
             y := this.rows_top + (A_Index - 1) * WindowTheme.row_pitch
             this.numbers.Push(WindowTheme.AddNumberCell(this.window, y))
-            this.labels.Push(WindowTheme.AddTextCell(this.window, s(48), y, s(120)))
-            this.titles.Push(WindowTheme.AddTextCell(this.window, s(168), y, width - s(176)))
+            this.icons.Push(WindowTheme.AddIconCell(this.window, y))
+            this.labels.Push(WindowTheme.AddTextCell(this.window, s(76), y, s(104)))
+            this.titles.Push(WindowTheme.AddTextCell(this.window, s(180), y, width - s(188)))
             this.styles.Push("")
         }
         this.window.SetFont("norm c" WindowTheme.unconfigured_text)

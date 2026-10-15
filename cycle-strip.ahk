@@ -5,6 +5,7 @@
 class CycleStrip {
     static window := 0
     static numbers := []
+    static icons := []
     static titles := []
     static selected_row := 0
     static row_count := 0
@@ -49,9 +50,11 @@ class CycleStrip {
         }
         Loop this.row_count {
             index := first + A_Index - 1
+            hwnd := hwnds[index]
             title := "(window closed)"
-            try title := WinGetTitle(hwnds[index])
+            try title := WinGetTitle(hwnd)
             WindowTheme.SetText(this.numbers[A_Index], index)
+            WindowTheme.SetIcon(this.icons[A_Index], WindowTheme.WindowIcon(hwnd))
             WindowTheme.SetText(this.titles[A_Index], title)
         }
         ; Rows past row_count are clipped by the window height.
@@ -68,6 +71,7 @@ class CycleStrip {
         if !row
             return
         WindowTheme.StyleCell(this.numbers[row], on)
+        WindowTheme.StyleIcon(this.icons[row], on)
         WindowTheme.StyleCell(this.titles[row], on)
     }
 
@@ -81,13 +85,15 @@ class CycleStrip {
         DllCall("SetLayeredWindowAttributes", "Ptr", this.window.Hwnd, "UInt", 0, "UChar", 255, "UInt", 2)
         s := ObjBindMethod(WindowTheme, "Scale")
         this.numbers := []
+        this.icons := []
         this.titles := []
         this.selected_row := 0
         ; A fixed number column keeps titles aligned regardless of index width.
         Loop row_count {
             y := s(8) + (A_Index - 1) * WindowTheme.row_pitch
             this.numbers.Push(WindowTheme.AddNumberCell(this.window, y))
-            this.titles.Push(WindowTheme.AddTextCell(this.window, s(48), y, width - s(56)))
+            this.icons.Push(WindowTheme.AddIconCell(this.window, y))
+            this.titles.Push(WindowTheme.AddTextCell(this.window, s(76), y, width - s(84)))
         }
         this.size := width ":" row_count ":" theme
     }
