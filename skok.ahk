@@ -537,9 +537,21 @@ ActivateWindow(hwnd) {
         if (WinGetStyle(hwnd) & 0x8000000)  ; WS_DISABLED
             hwnd := DllCall("GetLastActivePopup", "Ptr", hwnd, "Ptr")
         ; WinActivate sleeps ~15 ms plus WinDelay; it's only needed if Windows refuses the direct call.
-        if !(DllCall("SetForegroundWindow", "Ptr", hwnd) && DllCall("GetForegroundWindow", "Ptr") = hwnd)
-            WinActivate(hwnd)
+        if (DllCall("SetForegroundWindow", "Ptr", hwnd) && DllCall("GetForegroundWindow", "Ptr") = hwnd)
+            return
+        WinActivate(hwnd)
+        ; A refused SetForegroundWindow flashes the taskbar button; the window is now active, so that highlight is stale.
+        if (DllCall("GetForegroundWindow", "Ptr") = hwnd)
+            StopFlashing(hwnd)
     }
+}
+
+StopFlashing(hwnd) {
+    info := Buffer(A_PtrSize = 8 ? 32 : 20, 0)  ; FLASHWINFO
+    NumPut("UInt", info.Size, info, 0)
+    NumPut("Ptr", hwnd, info, A_PtrSize)
+    NumPut("UInt", 0, info, A_PtrSize * 2)  ; FLASHW_STOP
+    DllCall("FlashWindowEx", "Ptr", info)
 }
 
 SortNumeric(hwnds) {
