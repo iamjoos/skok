@@ -25,7 +25,10 @@ MouseGetPos(&mouse_x, &mouse_y)
 windows := []
 cycle_session := false
 cycle_selected := 0
-unconfigured_cycle := []
+vd := FakeDesktops()
+desktop_focus := Map()
+current_desktop := 0
+previous_desktop := -1
 current_window := 0
 previous_window := 0
 show_cycle_titles := true
@@ -206,11 +209,20 @@ try {
     WindowOutline.enabled := true
     show_cycle_titles := true
 
-    ; Focusing an already-active single window starts no session; a single unconfigured target still peeks.
+    ; The current desktop's shortcut uses the same preview session; a single target still peeks.
     WinActivate(origin)
-    FocusOrRun("ahk_id " origin, "unused", "")
-    Assert(!cycle_session, "Single active app window started a cycle session")
+    SyncActiveWindow()
+    vd.names[0] := "here"
+    candidates := SortNumeric(GetCycleableWindows(""))
+    next := candidates[WrapIndex(IndexOf(candidates, origin), 1, candidates.Length)]
+    GoToDesktop({name: "here"})
+    SetTimer(EndCycleSession, 0)
+    Critical "Off"
+    Assert(cycle_session && cycle_selected = next, "Current desktop shortcut did not start cycling")
+    AssertCyclePeek(next, origin)
+    StopCycleSession()
     AssertHidden()
+    WinActivate(origin)
     BeginCycleSession()
     SetTimer(EndCycleSession, 0)
     SelectNextWindow([target], origin, 1)
@@ -219,7 +231,7 @@ try {
     Assert(!DllCall("IsWindowVisible", "Ptr", CycleStrip.window.Hwnd), "Single-window peek showed the title strip")
     EndCycleSession()
     AssertHidden()
-    Assert(WinActive(target), "Release did not activate the single unconfigured target")
+    Assert(WinActive(target), "Release did not activate the single target")
 
     ; Closing the origin cannot move the strip; closing the selection clears its views.
     WindowTheme.SetDisplay("active")

@@ -6,8 +6,10 @@ original := WinExist("A")
 windows := []
 cycle_session := false
 cycle_selected := 0
-unconfigured_cycle := []
-configured_apps := []
+vd := FakeDesktops()
+desktop_focus := Map()
+current_desktop := 0
+previous_desktop := -1
 current_window := 0
 previous_window := 0
 show_cycle_titles := true
@@ -19,8 +21,8 @@ try {
     prior := windows[2].Hwnd
     picked := windows[3].Hwnd
     entries := [
-        {hwnd: picked, app: "Picked", exe: "test", title: "Picked", current: false},
-        {hwnd: origin, app: "Origin", exe: "test", title: "Origin", current: true}
+        {hwnd: picked, desktop: "Picked", here: true, exe: "test", title: "Picked", current: false},
+        {hwnd: origin, desktop: "Origin", here: true, exe: "test", title: "Origin", current: true}
     ]
     ; SyncActiveWindow stands in for the shell hook, which the tests don't register.
     WinActivate(origin)
@@ -83,8 +85,8 @@ try {
     previous_window := prior
     WinActivate(tool)
     tool_entries := [
-        {hwnd: origin, app: "Origin", exe: "test", title: "Origin", current: false},
-        {hwnd: picked, app: "Picked", exe: "test", title: "Picked", current: false}
+        {hwnd: origin, desktop: "Origin", here: true, exe: "test", title: "Origin", current: false},
+        {hwnd: picked, desktop: "Picked", here: true, exe: "test", title: "Picked", current: false}
     ]
     WindowSearch.Show(tool_entries, ActivateWindow, current_window)
     WindowSearch.Move(1)
@@ -113,34 +115,34 @@ try {
     previous_window := prior
     WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
-    FocusOrRun("ahk_id " origin, "unused", "")
-    Assert(!WindowSearch.active && !cycle_session && WinActive(origin), "Single-window app shortcut did not cancel search to origin")
+    vd.names[0] := "here"
+    GoToDesktop({name: "here"})
+    Assert(!WindowSearch.active && !cycle_session && WinActive(origin), "Current-desktop shortcut did not cancel search to origin")
+    ; picked lives on desktop 2 of the fake, so switching there focuses it.
+    vd.desktops := 2
+    vd.names[1] := "there"
+    vd.MoveWindow(picked, 1)
+    desktop_focus[1] := picked
     WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
-    FocusOrRun("ahk_id " picked, "unused", "")
+    GoToDesktop({name: "there"})
     SyncActiveWindow()
-    Assert(!WindowSearch.active && WinActive(picked), "App shortcut did not cancel search and focus target")
-    Assert(current_window = picked && previous_window = origin, "App shortcut from search recorded the previewed window")
+    Assert(!WindowSearch.active && WinActive(picked) && vd.at = 1, "Desktop shortcut did not cancel search and focus the desktop's window")
+    Assert(current_window = picked && previous_window = origin, "Desktop shortcut from search recorded the previewed window")
+    vd.at := 0
+    vd.windows.Clear()
 
     WinActivate(origin), SyncActiveWindow()
     WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
-    CycleCurrentApp(1)
+    CycleWindows(1)
     SetTimer(EndCycleSession, 0)
     Critical "Off"
-    Assert(!WindowSearch.active && !DllCall("IsWindowVisible", "Ptr", WindowSearch.window.Hwnd), "App cycling did not cancel search")
-    Assert(cycle_session && WinActive(origin) && cycle_selected != origin, "App cycling from search did not start from origin")
+    Assert(!WindowSearch.active && !DllCall("IsWindowVisible", "Ptr", WindowSearch.window.Hwnd), "Cycling did not cancel search")
+    Assert(cycle_session && WinActive(origin) && cycle_selected != origin, "Cycling from search did not start from origin")
     AssertPeekShown(cycle_selected, CycleStrip.window.Hwnd)
-    StopCycleSession()
-
-    WinActivate(origin), SyncActiveWindow()
-    WindowSearch.Show(entries, ActivateWindow)
-    WindowSearch.Move(1)
-    CycleUnconfigured(1)
-    SetTimer(EndCycleSession, 0)
-    Critical "Off"
-    Assert(!WindowSearch.active && !DllCall("IsWindowVisible", "Ptr", WindowSearch.window.Hwnd), "Unconfigured cycling did not cancel search")
-    Assert(cycle_session && WinActive(origin) && cycle_selected != origin, "Unconfigured cycling from search did not start from origin")
+    ; Cycling covers every window on the desktop; don't focus one the test didn't create.
+    cycle_selected := 0
     StopCycleSession()
 
     AddTestWindows(windows, "Search history disposable", 1)

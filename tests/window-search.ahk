@@ -2,8 +2,8 @@
 #Include ..\window-search.ahk
 #Include lib.ahk
 
-Entry(hwnd, app, current := false, text := "same") {
-    entry := {hwnd: hwnd, app: app, current: current, exe: "", title: text}
+Entry(hwnd, desktop, current := false, text := "same") {
+    entry := {hwnd: hwnd, desktop: desktop, here: desktop != "", current: current, exe: "", title: text}
     WindowSearch.Prepare(entry)
     return entry
 }

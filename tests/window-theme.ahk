@@ -25,10 +25,10 @@ try {
     AssertEqual(WindowTheme.background, "F3F3F3")
     AssertEqual(WindowTheme.panel_background, "FFFFFF")
     AssertEqual(WindowTheme.text, "1A1A1A")
-    AssertEqual(WindowTheme.unconfigured_text, "6A6A6A")
+    AssertEqual(WindowTheme.muted_text, "6A6A6A")
     accent := WindowTheme.selected_background
     selected_text := WindowTheme.selected_text
-    AssertEqual(WindowTheme.configured_text, accent)
+    AssertEqual(WindowTheme.accent_text, accent)
 
     WindowTheme.SetMode("Dark")
     AssertEqual(WindowTheme.mode, "dark")
@@ -36,7 +36,7 @@ try {
     AssertEqual(WindowTheme.background, "202020")
     AssertEqual(WindowTheme.panel_background, "2D2D30")
     AssertEqual(WindowTheme.text, "F0F0F0")
-    AssertEqual(WindowTheme.unconfigured_text, "A0A0A0")
+    AssertEqual(WindowTheme.muted_text, "A0A0A0")
     AssertEqual(WindowTheme.selected_background, accent)
     AssertEqual(WindowTheme.selected_text, selected_text)
     if (light_signature = dark_signature)

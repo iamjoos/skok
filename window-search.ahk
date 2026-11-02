@@ -3,7 +3,7 @@
 #Include %A_LineFile%\..\window-outline.ahk
 #Include %A_LineFile%\..\window-peek.ahk
 
-; A focusable picker that fuzzy-filters window entries ({hwnd, app, exe, title, current}) as you type.
+; A focusable picker that fuzzy-filters window entries ({hwnd, desktop, here, exe, title, current}) as you type.
 class WindowSearch {
     static window := 0
     static edit := 0
@@ -133,9 +133,9 @@ class WindowSearch {
             entry := this.matches[index]
             WindowTheme.SetText(this.numbers[A_Index], index)
             WindowTheme.SetIcon(this.icons[A_Index], entry.icon)
-            WindowTheme.SetText(this.labels[A_Index], entry.app != "" ? entry.app : entry.exe)
+            WindowTheme.SetText(this.labels[A_Index], entry.desktop)
             WindowTheme.SetText(this.titles[A_Index], entry.title)
-            this.Style(A_Index, index = this.selected, entry.app != "")
+            this.Style(A_Index, index = this.selected, entry.here)
         }
         ; Rows past the matches are clipped by the window height.
         height := this.rows_top + rows * WindowTheme.row_pitch + (rows ? WindowTheme.Scale(4) : 0)
@@ -159,15 +159,15 @@ class WindowSearch {
         }
     }
 
-    ; Restyling only changed rows avoids flicker while typing.
-    static Style(row, selected, configured) {
-        state := selected ":" configured
+    ; Restyling only changed rows avoids flicker while typing. Desktop labels are muted for other desktops.
+    static Style(row, selected, here) {
+        state := selected ":" here
         if (this.styles[row] = state)
             return
         this.styles[row] := state
         WindowTheme.StyleIcon(this.icons[row], selected)
         WindowTheme.StyleCell(this.numbers[row], selected)
-        WindowTheme.StyleCell(this.labels[row], selected, configured ? WindowTheme.configured_text : WindowTheme.unconfigured_text)
+        WindowTheme.StyleCell(this.labels[row], selected, here ? WindowTheme.accent_text : WindowTheme.muted_text)
         WindowTheme.StyleCell(this.titles[row], selected)
     }
 
@@ -237,19 +237,19 @@ class WindowSearch {
             this.Hide()
     }
 
-    ; Empty queries put the current window first, then configured windows; otherwise use stable score ties.
+    ; Empty queries put the current window first, then windows on the current desktop; otherwise use stable score ties.
     static Filter(entries, query) {
         if (Trim(query, " ") = "") {
-            matches := [], unconfigured := []
+            matches := [], elsewhere := []
             for _, entry in entries {
                 if entry.current
                     matches.InsertAt(1, entry)
-                else if (entry.app != "")
+                else if entry.here
                     matches.Push(entry)
                 else
-                    unconfigured.Push(entry)
+                    elsewhere.Push(entry)
             }
-            matches.Push(unconfigured*)
+            matches.Push(elsewhere*)
             return matches
         }
         matches := [], scores := []
@@ -273,7 +273,7 @@ class WindowSearch {
 
     ; Entries are rescored on every keystroke, so derive their search text once.
     static Prepare(entry) {
-        text := (entry.app != "" ? entry.app " " : "") entry.exe " " entry.title
+        text := entry.desktop " " entry.exe " " entry.title
         entry.lower := StrLower(text)
         entry.chars := StrSplit(entry.lower)
         entry.terms := Map()
@@ -408,7 +408,7 @@ class WindowSearch {
             this.titles.Push(WindowTheme.AddTextCell(this.window, s(180), y, width - s(188)))
             this.styles.Push("")
         }
-        this.window.SetFont("norm c" WindowTheme.unconfigured_text)
+        this.window.SetFont("norm c" WindowTheme.muted_text)
         this.overflow := this.window.AddText("x" s(8) " y" (this.rows_top + capacity * WindowTheme.row_pitch)
             . " w" (width - s(16)) " h" s(24) " +0x281 +Hidden +Background" WindowTheme.background, "")
         this.size := width ":" capacity ":" theme

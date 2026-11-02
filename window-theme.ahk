@@ -12,8 +12,8 @@ class WindowTheme {
     static text := ""
     static selected_text := ""
     static row_selected_text := ""
-    static configured_text := ""
-    static unconfigured_text := ""
+    static accent_text := ""
+    static muted_text := ""
     static font_face := "Segoe UI"
     static row_font_size := 10
     static search_font_size := 12
@@ -49,21 +49,21 @@ class WindowTheme {
             this.background := "F3F3F3"
             this.panel_background := "FFFFFF"
             this.text := "1A1A1A"
-            this.configured_text := this.selected_background
-            this.unconfigured_text := "6A6A6A"
+            this.accent_text := this.selected_background
+            this.muted_text := "6A6A6A"
             this.row_selected_background := Format("{:02X}{:02X}{:02X}", Round(243 * 0.72 + red * 0.28), Round(243 * 0.72 + green * 0.28), Round(243 * 0.72 + blue * 0.28))
             this.row_selected_text := "1A1A1A"
         } else {
             this.background := "202020"
             this.panel_background := "2D2D30"
             this.text := "F0F0F0"
-            this.configured_text := Format("{:02X}{:02X}{:02X}", Min(255, red + 70), Min(255, green + 70), Min(255, blue + 70))
-            this.unconfigured_text := "A0A0A0"
+            this.accent_text := Format("{:02X}{:02X}{:02X}", Min(255, red + 70), Min(255, green + 70), Min(255, blue + 70))
+            this.muted_text := "A0A0A0"
             this.row_selected_background := Format("{:02X}{:02X}{:02X}", Round(32 * 0.65 + red * 0.35), Round(32 * 0.65 + green * 0.35), Round(32 * 0.65 + blue * 0.35))
             this.row_selected_text := "FFFFFF"
         }
         return this.background ":" this.selected_background ":" this.row_selected_background ":" this.panel_background ":" this.text
-            . ":" this.selected_text ":" this.configured_text ":" this.unconfigured_text
+            . ":" this.selected_text ":" this.accent_text ":" this.muted_text
     }
 
     ; Layout is in physical pixels (-DPIScale) to match monitor work areas, but fonts still scale with DPI.

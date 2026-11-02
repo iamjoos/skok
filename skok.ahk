@@ -4,16 +4,17 @@
 #Include %A_LineFile%\..\cycle-strip.ahk
 #Include %A_LineFile%\..\window-outline.ahk
 #Include %A_LineFile%\..\window-search.ahk
+#Include %A_LineFile%\..\virtual-desktops.ahk
 
-; Jump between windows from the keyboard (never moves or resizes them):
-; - super + <key>: focus an app's most recently used window, otherwise launch it
-; - super + <previous_window_hotkey>: toggle to the previously focused window (default: Space)
-; - super + <new_instance_modifier> + <key>: launch a new instance of the app (default modifier: alt)
+; Switch virtual desktops from the keyboard; each desktop keeps its own window layout:
+; - super + <key>: switch to that [desktop.*] section's desktop, or cycle its windows if already there
+; - super + <move_window_modifier> + <key>: move the active window to that desktop and follow it (default modifier: alt)
+; - super + <previous_desktop_hotkey>: toggle to the previous desktop (default: Tab)
+; - super + <previous_window_hotkey>: toggle to the previously focused window, on any desktop (default: Space)
+; - super + j / k: cycle forward / backward through windows on the current desktop
+; - super + <pin_window_hotkey>: pin or unpin the active window on all desktops (default: p)
 ; - super + <close_window_hotkey>: close the active window (default: shift + Backspace)
-; - repeated super + <app key>: cycle through that app's windows
-; - super + j / k: cycle forward / backward through the current app's windows
-; - super + l / h: cycle forward / backward through windows no [app.*] section matches
-; - super + s: fuzzy-search all open windows and focus the pick
+; - super + s: fuzzy-search windows on all desktops and focus the pick
 ; - super + <key> in a [send.*] section: send keystrokes, e.g. another app's global shortcut
 
 config_dir := EnvGet("LOCALAPPDATA") "\skok"
@@ -27,7 +28,8 @@ if !FileExist(config_path) {
     }
 }
 errors := []
-config := ReadConfig(config_path, errors)
+config_order := []
+config := ReadConfig(config_path, errors, config_order)
 settings := config.Get("settings", Map())
 
 ; Standard modifiers become native hotkey prefixes (e.g. !1) so the keyboard hook
@@ -36,9 +38,21 @@ modifier_prefixes := Map("alt", "!", "lalt", "<!", "ralt", ">!"
     , "ctrl", "^", "control", "^", "lctrl", "<^", "lcontrol", "<^", "rctrl", ">^", "rcontrol", ">^"
     , "shift", "+", "lshift", "<+", "rshift", ">+", "win", "#", "lwin", "<#", "rwin", ">#")
 
+dll_path := settings.Get("virtual_desktop_accessor", "") || "VirtualDesktopAccessor.dll"
+; Relative paths are relative to skok.ahk, not the working directory.
+if !RegExMatch(dll_path, "^([a-zA-Z]:)?[\\/]")
+    dll_path := A_ScriptDir "\" dll_path
+try vd := VirtualDesktopAccessor(dll_path)
+catch as err {
+    MsgBox("skok needs VirtualDesktopAccessor.dll and cannot start:`n`n" err.Message
+        . "`n`nDownload it from https://github.com/Ciantic/VirtualDesktopAccessor/releases and put it next to skok.ahk,"
+        . " or set virtual_desktop_accessor in " config_path ".", "skok", "Iconx")
+    ExitApp()
+}
+
 super_key := settings.Get("super_key", "CapsLock")
-new_instance_modifier := settings.Get("new_instance_modifier", InStr(super_key, "alt") ? "Shift" : "Alt")
-new_instance_modifier := modifier_prefixes.Get(StrLower(new_instance_modifier), new_instance_modifier)
+move_window_modifier := settings.Get("move_window_modifier", InStr(super_key, "alt") ? "Shift" : "Alt")
+move_window_modifier := modifier_prefixes.Get(StrLower(move_window_modifier), move_window_modifier)
 show_cycle_titles := BoolSetting(settings, "show_cycle_titles", true, errors)
 WindowOutline.enabled := BoolSetting(settings, "highlight_selection", true, errors)
 WindowSearch.previews := BoolSetting(settings, "preview_search_selection", true, errors)
@@ -68,13 +82,20 @@ if !super_valid {
 }
 
 SetWinDelay(10)
-configured_apps := []
-unconfigured_cycle := []
 cycle_session := false
 cycle_selected := 0
+desktop_focus := Map()
 InitializeWindowHistory()
+InitializeDesktopHistory()
 DllCall("RegisterShellHookWindow", "Ptr", A_ScriptHwnd)
 OnMessage(DllCall("RegisterWindowMessage", "Str", "SHELLHOOK", "UInt"), OnShellMessage)
+desktop_message := 0x8000 + 0x5D0  ; WM_APP + n; the DLL posts it on every desktop switch
+OnMessage(desktop_message, OnDesktopChanged)
+vd.Listen(A_ScriptHwnd, desktop_message)
+OnMessage(DllCall("RegisterWindowMessage", "Str", "TaskbarCreated", "UInt"), OnExplorerRestarted)
+
+desktop_sections := ParseDesktops(config, config_order, errors)
+PrepareDesktops(desktop_sections, errors)
 
 used_hotkeys := Map()
 if super_valid {
@@ -82,31 +103,19 @@ if super_valid {
         HotIf(IsSuperPressed)
 
     ; [setting, default key, action]
-    setting_hotkeys := [["previous_window_hotkey", "Space", SwitchToPreviousWindow]
-        , ["cycle_app_windows_hotkey", "j", CycleCurrentApp.Bind(1)]
-        , ["reverse_cycle_app_windows_hotkey", "k", CycleCurrentApp.Bind(-1)]
-        , ["cycle_unconfigured_hotkey", "l", CycleUnconfigured.Bind(1)]
-        , ["reverse_cycle_unconfigured_hotkey", "h", CycleUnconfigured.Bind(-1)]
+    setting_hotkeys := [["previous_desktop_hotkey", "Tab", SwitchToPreviousDesktop]
+        , ["previous_window_hotkey", "Space", SwitchToPreviousWindow]
+        , ["cycle_windows_hotkey", "j", CycleWindows.Bind(1)]
+        , ["reverse_cycle_windows_hotkey", "k", CycleWindows.Bind(-1)]
+        , ["pin_window_hotkey", "p", TogglePinActiveWindow]
         , ["close_window_hotkey", "+Backspace", CloseActiveWindow]
         , ["search_windows_hotkey", "s", SearchWindows]]
     for _, h in setting_hotkeys
         RegisterHotkey(settings.Get(h[1], h[2]), h[3], h[1], used_hotkeys, errors)
 
-    for section, keys in config {
-        if !RegExMatch(section, "i)^app\.")
-            continue
-        app_hotkey := keys.Get("hotkey", "")
-        win_title := keys.Get("match", "")
-        run_cmd := keys.Get("run", "")
-        new_instance_run := keys.Get("new_instance_run", "") || run_cmd
-        run_dir := keys.Get("run_dir", "")
-        if (app_hotkey = "" || win_title = "" || run_cmd = "") {
-            errors.Push("[" section "] requires hotkey, match and run.")
-            continue
-        }
-        configured_apps.Push({name: SubStr(section, 5), match: win_title})
-        RegisterHotkey(app_hotkey, FocusOrRun.Bind(win_title, run_cmd, run_dir), section, used_hotkeys, errors)
-        RegisterHotkey(new_instance_modifier app_hotkey, LaunchApp.Bind(new_instance_run, run_dir), section " new instance", used_hotkeys, errors)
+    for _, d in desktop_sections {
+        RegisterHotkey(d.hotkey, GoToDesktop.Bind(d), d.section, used_hotkeys, errors)
+        RegisterHotkey(move_window_modifier d.hotkey, MoveActiveWindow.Bind(d), d.section " move window", used_hotkeys, errors)
     }
 
     for section, keys in config {
@@ -134,8 +143,9 @@ if errors.Length {
 A_TrayMenu.Add()
 A_TrayMenu.Add("Edit config", (*) => Run('notepad.exe "' config_path '"'))
 
-; Reads an INI file as UTF-8 (or UTF-16 with BOM), keeping quotes in values.
-ReadConfig(path, errors) {
+; Reads an INI file as UTF-8 (or UTF-16 with BOM), keeping quotes in values. Section names are appended to order
+; as first seen, since a Map enumerates them sorted.
+ReadConfig(path, errors, order := []) {
     sections := CaselessMap()
     keys := 0
     Loop Parse FileRead(path, "UTF-8"), "`n", "`r" {
@@ -144,8 +154,10 @@ ReadConfig(path, errors) {
             continue
         if RegExMatch(line, "^\[(.*)\]\s*(;.*)?$", &m) {
             name := Trim(m[1])
-            if !sections.Has(name)
+            if !sections.Has(name) {
                 sections[name] := CaselessMap()
+                order.Push(name)
+            }
             keys := sections[name]
         } else if (keys && (eq := InStr(line, "="))) {
             keys[Trim(SubStr(line, 1, eq - 1))] := Trim(SubStr(line, eq + 1))
@@ -157,6 +169,29 @@ ReadConfig(path, errors) {
         }
     }
     return sections
+}
+
+; [desktop.<name>] sections in config order; the order sets each desktop's initial position in Task View.
+ParseDesktops(config, order, errors) {
+    result := []
+    names := CaselessMap()
+    for _, section in order {
+        if !RegExMatch(section, "i)^desktop\.(.*)$", &m)
+            continue
+        name := Trim(m[1])
+        desktop_hotkey := config[section].Get("hotkey", "")
+        if (name = "" || desktop_hotkey = "") {
+            errors.Push("[" section "] requires a name after desktop. and a hotkey.")
+            continue
+        }
+        if names.Has(name) {
+            errors.Push("[" section "] names the same desktop as [" names[name] "].")
+            continue
+        }
+        names[name] := section
+        result.Push({section: section, name: name, hotkey: desktop_hotkey, position: result.Length})
+    }
+    return result
 }
 
 CaselessMap() {
@@ -256,7 +291,12 @@ OnShellMessage(wParam, lParam, *) {
 TrackActiveWindow(hwnd) {
     global current_window, previous_window
     hwnd := CycleableRoot(hwnd)
-    if (!hwnd || hwnd = current_window)
+    if !hwnd
+        return
+    ; An active window is on the current desktop, so restoring this desktop focuses it again.
+    if ((number := vd.Current()) >= 0)
+        desktop_focus[number] := hwnd
+    if (hwnd = current_window)
         return
     previous_window := current_window
     current_window := hwnd
@@ -293,8 +333,8 @@ SwitchToPreviousWindow(*) {
     active := SyncActiveWindow()
 
     target := previous_window
-    if (!target || target = active || !IsCycleableWindow(target)) {
-        ; The previous window is gone; fall back to the most recently used other window.
+    if (!target || target = active || WindowDesktop(target) < 0) {
+        ; The previous window is gone; fall back to the most recently used other window on this desktop.
         target := 0
         for _, hwnd in GetCycleableWindows("") {
             if (hwnd != active) {
@@ -305,53 +345,196 @@ SwitchToPreviousWindow(*) {
     }
     ; History is updated by the shell hook, so a failed activation leaves it intact.
     if target
+        FocusWindow(target)
+}
+
+InitializeDesktopHistory() {
+    global current_desktop, previous_desktop
+    current_desktop := vd.Current()
+    previous_desktop := -1
+}
+
+; The message's desktop numbers can be stale when switches overlap, so read the current desktop instead.
+OnDesktopChanged(*) => SyncDesktop()
+
+; Explorer restarts recreate the virtual desktop service.
+OnExplorerRestarted(*) {
+    vd.Restart()
+    vd.Listen(A_ScriptHwnd, desktop_message)
+    SyncDesktop()
+}
+
+; Only a change of desktop counts; focus changes within a desktop leave the history alone.
+TrackDesktop(number) {
+    global current_desktop, previous_desktop
+    if (number < 0 || number = current_desktop)
+        return
+    previous_desktop := current_desktop
+    current_desktop := number
+}
+
+; Account for a switch whose notification has not arrived yet.
+SyncDesktop() => TrackDesktop(vd.Current())
+
+SwitchToPreviousDesktop(*) {
+    StopCycleSession()
+    SyncDesktop()
+    if (previous_desktop >= 0 && previous_desktop != current_desktop && previous_desktop < vd.Count())
+        SwitchDesktop(previous_desktop)
+}
+
+; Gives each section a desktop: one already named after it, wherever it is; else the desktop at the section's
+; position unless another section's name is on it; else a new desktop.
+PrepareDesktops(sections, errors) {
+    names := CaselessMap()
+    for _, d in sections
+        names[d.name] := true
+    for _, d in sections {
+        if (FindDesktop(d.name) >= 0)
+            continue
+        if (d.position < vd.Count() && !names.Has(vd.Name(d.position)))
+            vd.SetName(d.position, d.name)
+        else if (AddDesktop(d.name) < 0)
+            errors.Push("Could not create a virtual desktop for [" d.section "].")
+    }
+}
+
+; The desktop's position in Task View, or -1 if no desktop has the name.
+FindDesktop(name) {
+    Loop vd.Count() {
+        if (vd.Name(A_Index - 1) = name)
+            return A_Index - 1
+    }
+    return -1
+}
+
+; The section's desktop, recreated at the end if it was removed or renamed; -1 if that fails.
+ResolveDesktop(d) {
+    number := FindDesktop(d.name)
+    return number >= 0 ? number : AddDesktop(d.name)
+}
+
+AddDesktop(name) {
+    count := vd.Count()
+    vd.Create()
+    if (vd.Count() <= count)
+        return -1
+    vd.SetName(count, name)
+    return count
+}
+
+GoToDesktop(d, *) {
+    number := ResolveDesktop(d)
+    if (number >= 0 && number = vd.Current()) {
+        CycleWindows(1)
+        return
+    }
+    StopCycleSession()
+    if (number >= 0)
+        SwitchDesktop(number)
+}
+
+; Switches desktops and focuses target there.
+SwitchDesktop(number, target := 0) {
+    if !target
+        target := DesktopFocusTarget(number, DesktopWindows(number))
+    if (number = vd.Current()) {
+        ; Already here: only take focus back from the taskbar or the Windows desktop.
+        if (target && !GetActiveWindow())
+            ActivateWindow(target)
+        return
+    }
+    vd.GoTo(number)
+    SyncDesktop()
+    if (target && target != GetActiveWindow())
         ActivateWindow(target)
 }
 
-FocusOrRun(win_title, run_cmd, run_dir, *) {
-    hwnds := GetCycleableWindows(win_title)
-    if !hwnds.Length {
-        LaunchApp(run_cmd, run_dir)
-        return
+; The window last focused on the desktop if it is still there, else its topmost window.
+DesktopFocusTarget(number, windows) {
+    if desktop_focus.Has(number) {
+        remembered := desktop_focus[number]
+        if (IndexOf(windows, remembered) || WinExist(remembered) && IsTaskWindow(remembered) && vd.IsPinned(remembered))
+            return remembered
     }
-    current := CycleSelection()
-    if IndexOf(hwnds, current) {
-        if (hwnds.Length < 2)
-            return
-        BeginCycleSession()
-        SelectNextWindow(SortNumeric(hwnds), current, 1)
-        return
-    }
-    ; WinGetList returns windows in z-order, so the first is the most recently used.
-    StopCycleSession()
-    ActivateWindow(hwnds[1])
+    return windows.Length ? windows[1] : 0
 }
 
-LaunchApp(run_cmd, run_dir, *) {
-    StopCycleSession()
-    try Run(run_cmd, run_dir)
-    catch as err {
-        MsgBox("Failed to launch: " run_cmd "`n" err.Message, "skok", "Iconx")
+; Windows on the desktop in z-order (most recently used first), excluding windows pinned to all desktops.
+DesktopWindows(number) {
+    result := []
+    for _, hwnd in WinGetList() {
+        if (IsTaskWindow(hwnd) && !(CloakFlags(hwnd) & ~2) && vd.WindowDesktop(hwnd) = number && !vd.IsPinned(hwnd))
+            result.Push(hwnd)
     }
+    return result
 }
+
+; The desktop the window is on: the current one if it is visible here, -1 if it is on none.
+WindowDesktop(hwnd) {
+    if !(WinExist(hwnd) && IsTaskWindow(hwnd))
+        return -1
+    cloak := CloakFlags(hwnd)
+    if !cloak
+        return vd.Current()
+    ; Windows on other desktops are cloaked by the shell only; others (e.g. suspended UWP apps) are hidden.
+    return cloak = 2 ? vd.WindowDesktop(hwnd) : -1
+}
+
+; Focuses a window on any desktop, switching to its desktop first.
+FocusWindow(hwnd) {
+    number := WindowDesktop(hwnd)
+    if (number >= 0 && number != vd.Current())
+        SwitchDesktop(number, hwnd)
+    else
+        ActivateWindow(hwnd)
+}
+
+; Moves the active window to the desktop and follows it there.
+MoveActiveWindow(d, *) {
+    StopCycleSession()
+    if (!(hwnd := SyncActiveWindow()) || (number := ResolveDesktop(d)) < 0)
+        return
+    ; A pinned window is already on every desktop.
+    if (!vd.IsPinned(hwnd) && vd.WindowDesktop(hwnd) != number && vd.MoveWindow(hwnd, number) < 0)
+        return
+    desktop_focus[number] := hwnd
+    SwitchDesktop(number, hwnd)
+}
+
+TogglePinActiveWindow(*) {
+    StopCycleSession()
+    if (hwnd := SyncActiveWindow())
+        ShowNotice(vd.TogglePin(hwnd) ? "Pinned to all desktops" : "Unpinned", hwnd)
+}
+
+; Pinning has no visible effect, so confirm it briefly over the window.
+ShowNotice(text, hwnd) {
+    CoordMode("ToolTip", "Screen")
+    try {
+        WinGetPos(&x, &y, &w, &h, hwnd)
+        ToolTip(text, x + w // 2, y + h // 2)
+    } catch {
+        ToolTip(text)
+    }
+    SetTimer(HideNotice, -1000)
+}
+
+HideNotice() => ToolTip()
 
 SendKeys(keys, *) {
     StopCycleSession()
     Send(keys)
 }
 
-CycleCurrentApp(direction, *) {
-    if !(current := CycleSelection())
-        return
-    try exe := WinGetProcessName(current)
-    catch
-        return
-
-    hwnds := GetCycleableWindows("ahk_exe " exe)
-    if (hwnds.Length < 2)
+; Windows on the current desktop in handle order, for a stable sequence.
+CycleWindows(direction, *) {
+    current := CycleSelection()
+    hwnds := SortNumeric(GetCycleableWindows(""))
+    if (!hwnds.Length || hwnds.Length = 1 && hwnds[1] = current)
         return
     BeginCycleSession()
-    SelectNextWindow(SortNumeric(hwnds), current, direction)
+    SelectNextWindow(hwnds, current, direction)
 }
 
 ; Cycling previews windows until super is released; only the final selection is activated,
@@ -373,12 +556,11 @@ EndCycleSession() {
 
 ; Other hotkeys end the session too, so they act on the selected window.
 StopCycleSession() {
-    global cycle_session, cycle_selected, unconfigured_cycle
+    global cycle_session, cycle_selected
     WindowSearch.Cancel()
     selected := cycle_session ? cycle_selected : 0
     cycle_session := false
     cycle_selected := 0
-    unconfigured_cycle := []
     SetTimer(EndCycleSession, 0)
     ; Activate under the peek so the switch doesn't flash the previous window.
     if (selected && selected != GetActiveWindow() && WinExist(selected))
@@ -388,40 +570,7 @@ StopCycleSession() {
     WindowPeek.Hide()
 }
 
-; The unconfigured-only list is fixed on the first press of a session.
-CycleUnconfigured(direction, *) {
-    global unconfigured_cycle
-    current := CycleSelection()
-    if !unconfigured_cycle.Length {
-        list := GetUnconfiguredWindows()
-        if (!list.Length || (list.Length = 1 && list[1] = current))
-            return
-        unconfigured_cycle := list
-    }
-    BeginCycleSession()
-    SelectNextWindow(unconfigured_cycle, current, direction)
-}
-
-; Cycleable windows no [app.*] match covers, in handle order.
-GetUnconfiguredWindows() {
-    result := []
-    for _, hwnd in SortNumeric(GetCycleableWindows("")) {
-        if (ConfiguredAppName(hwnd) = "")
-            result.Push(hwnd)
-    }
-    return result
-}
-
-; The name of the first [app.<name>] section whose match covers the window, or "".
-ConfiguredAppName(hwnd) {
-    for _, app in configured_apps {
-        if WinExist(app.match " ahk_id " hwnd)
-            return app.name
-    }
-    return ""
-}
-
-; Keep active last for fuzzy-score ties; the picker puts it first when the query is empty.
+; Lists windows on all desktops; keep active last for fuzzy-score ties (the picker puts it first when the query is empty).
 SearchWindows(*) {
     if WindowSearch.active {
         WindowSearch.Cancel()
@@ -429,10 +578,21 @@ SearchWindows(*) {
     }
     StopCycleSession()
     active := SyncActiveWindow()
+    here := vd.Current()
+    labels := Map()
     entries := []
     last := 0
-    for _, hwnd in GetCycleableWindows("") {
-        try entry := {hwnd: hwnd, app: ConfiguredAppName(hwnd), title: WinGetTitle(hwnd)
+    ; AHK treats shell-cloaked windows on other desktops as hidden during enumeration.
+    detect := A_DetectHiddenWindows
+    DetectHiddenWindows(true)
+    try hwnds := WinGetList()
+    finally DetectHiddenWindows(detect)
+    for _, hwnd in hwnds {
+        if ((number := WindowDesktop(hwnd)) < 0)
+            continue
+        if !labels.Has(number)
+            labels[number] := DesktopLabel(number)
+        try entry := {hwnd: hwnd, desktop: labels[number], here: number = here, title: WinGetTitle(hwnd)
             , exe: RegExReplace(WinGetProcessName(hwnd), "i)\.exe$"), current: hwnd = active}
         catch
             continue
@@ -443,23 +603,28 @@ SearchWindows(*) {
     }
     if last
         entries.Push(last)
-    ; Cancelling from the taskbar or desktop returns to the last focused window.
-    WindowSearch.Show(entries, ActivateWindow, active ? 0 : current_window)
+    ; Cancelling from the taskbar or desktop returns to the last focused window, unless that is on another desktop.
+    origin := !active && WindowDesktop(current_window) = here ? current_window : 0
+    WindowSearch.Show(entries, FocusWindow, origin)
 }
 
-IsCloaked(hwnd) {
+DesktopLabel(number) => vd.Name(number) || "Desktop " (number + 1)
+
+IsCloaked(hwnd) => CloakFlags(hwnd) != 0
+
+; DWM_CLOAKED_APP (1), DWM_CLOAKED_SHELL (2), DWM_CLOAKED_INHERITED (4).
+CloakFlags(hwnd) {
     cloaked := 0
     DllCall("dwmapi\DwmGetWindowAttribute", "Ptr", hwnd, "UInt", 14, "UInt*", &cloaked, "UInt", 4)
-    return cloaked != 0
+    return cloaked
 }
 
 CloseActiveWindow(*) {
-    global unconfigured_cycle, cycle_selected
+    global cycle_selected
     WindowSearch.Cancel()
     ; While cycling, close the previewed window; the session continues from the active one.
     target := cycle_session ? cycle_selected : 0
     cycle_selected := 0
-    unconfigured_cycle := []
     CycleStrip.Hide()
     WindowOutline.Hide()
     WindowPeek.Hide()
@@ -503,8 +668,11 @@ GetCycleableWindows(win_title) {
     return result
 }
 
-; Approximates the Alt+Tab list: visible, titled, activatable top-level windows.
-IsCycleableWindow(hwnd) {
+; Windows on the current desktop that approximate the Alt+Tab list.
+IsCycleableWindow(hwnd) => IsTaskWindow(hwnd) && !IsCloaked(hwnd)
+
+; Visible, titled, activatable top-level windows on any desktop.
+IsTaskWindow(hwnd) {
     try {
         style := WinGetStyle(hwnd)
         ex_style := WinGetExStyle(hwnd)
@@ -525,8 +693,7 @@ IsCycleableWindow(hwnd) {
         return false
     if RegExMatch(class_name, "^(Progman|WorkerW|Shell_TrayWnd|Shell_SecondaryTrayWnd)$")
         return false
-    ; Excludes windows on other virtual desktops and suspended UWP apps.
-    return !IsCloaked(hwnd)
+    return true
 }
 
 ActivateWindow(hwnd) {

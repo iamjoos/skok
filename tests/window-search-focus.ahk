@@ -40,9 +40,9 @@ try {
     second := windows[2].Hwnd
     third := windows[3].Hwnd
     entries := [
-        {hwnd: second, app: "Second", exe: "test", title: "Second", current: false},
-        {hwnd: third, app: "Third", exe: "test", title: "Third", current: false},
-        {hwnd: start, app: "Start", exe: "test", title: "Start", current: true}
+        {hwnd: second, desktop: "Second", here: true, exe: "test", title: "Second", current: false},
+        {hwnd: third, desktop: "Third", here: true, exe: "test", title: "Third", current: false},
+        {hwnd: start, desktop: "Start", here: true, exe: "test", title: "Start", current: true}
     ]
     ; Exercise both policies on every attached monitor (also valid on one monitor).
     primary := MonitorGetPrimary()
@@ -82,9 +82,9 @@ try {
     windows.Push(per_monitor)
     per_monitor.Show("w240 h100")
     mixed := [
-        {hwnd: per_monitor.Hwnd, app: "PerMonitor", exe: "test", title: "PerMonitor", current: false},
-        {hwnd: second, app: "Second", exe: "test", title: "Second", current: false},
-        {hwnd: start, app: "Start", exe: "test", title: "Start", current: true}
+        {hwnd: per_monitor.Hwnd, desktop: "PerMonitor", here: true, exe: "test", title: "PerMonitor", current: false},
+        {hwnd: second, desktop: "Second", here: true, exe: "test", title: "Second", current: false},
+        {hwnd: start, desktop: "Start", here: true, exe: "test", title: "Start", current: true}
     ]
     Loop MonitorGetCount() {
         MonitorGetWorkArea(A_Index, &left, &top)
@@ -172,8 +172,8 @@ try {
     external_preview := WinWait("Search fixture preview ahk_pid " fixture_pid, , 5)
     Assert(external_origin && external_preview, "Fixture windows did not open")
     external_entries := [
-        {hwnd: external_preview, app: "Preview", exe: "test", title: "Preview", current: false},
-        {hwnd: external_origin, app: "Origin", exe: "test", title: "Origin", current: true}
+        {hwnd: external_preview, desktop: "Preview", here: true, exe: "test", title: "Preview", current: false},
+        {hwnd: external_origin, desktop: "Origin", here: true, exe: "test", title: "Origin", current: true}
     ]
     WinActivate(external_origin)
     WindowSearch.Show(external_entries, Focus)
@@ -218,10 +218,10 @@ try {
     WindowSearch.previews := true
 
     ; Ctrl+digits pick on release, or at once when no further digit fits.
-    numbered := [{hwnd: start, app: "Start", exe: "test", title: "Start", current: true}]
+    numbered := [{hwnd: start, desktop: "Start", here: true, exe: "test", title: "Start", current: true}]
     Loop 10
-        numbered.Push({hwnd: second, app: "Second", exe: "test", title: "Second " A_Index, current: false})
-    numbered.Push({hwnd: third, app: "Third", exe: "test", title: "Third", current: false})
+        numbered.Push({hwnd: second, desktop: "Second", here: true, exe: "test", title: "Second " A_Index, current: false})
+    numbered.Push({hwnd: third, desktop: "Third", here: true, exe: "test", title: "Third", current: false})
     WinActivate(start)
     WindowSearch.Show(numbered, Focus)
     SendEvent("{Ctrl down}1")

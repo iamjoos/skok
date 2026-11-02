@@ -34,3 +34,49 @@ PressEsc(picker) {
     SendEvent("{Esc}")
     WinWaitNotActive(picker, , 2)
 }
+
+; Stands in for VirtualDesktopAccessor so tests never switch the real desktops; windows default to desktop 0.
+; Fields can't share a name with a method (Count, Current): AHK keeps both in one namespace.
+class FakeDesktops {
+    __New(count := 1) {
+        this.desktops := count
+        this.at := 0
+        this.windows := Map()
+        this.pinned := Map()
+        this.names := Map()
+        this.switches := []
+    }
+
+    Count() => this.desktops
+    Current() => this.at
+    Create() => this.desktops++
+    WindowDesktop(hwnd) => this.windows.Get(hwnd, 0)
+    IsPinned(hwnd) => this.pinned.Has(hwnd)
+    Name(number) => this.names.Get(number, "")
+    Listen(hwnd, message) => 0
+    Restart() => 0
+
+    TogglePin(hwnd) {
+        if this.pinned.Has(hwnd)
+            this.pinned.Delete(hwnd)
+        else
+            this.pinned[hwnd] := true
+        return this.pinned.Has(hwnd)
+    }
+
+    GoTo(number) {
+        this.switches.Push(number)
+        this.at := number
+        return 1
+    }
+
+    MoveWindow(hwnd, number) {
+        this.windows[hwnd] := number
+        return 1
+    }
+
+    SetName(number, name) {
+        this.names[number] := name
+        return 1
+    }
+}
