@@ -593,7 +593,7 @@ SearchWindows(*) {
         if !labels.Has(number)
             labels[number] := DesktopLabel(number)
         try entry := {hwnd: hwnd, desktop: labels[number], desktop_number: number, here: number = here, title: WinGetTitle(hwnd)
-            , exe: RegExReplace(WinGetProcessName(hwnd), "i)\.exe$"), current: hwnd = active}
+            , exe: WinGetProcessName(hwnd), current: hwnd = active}
         catch
             continue
         if (hwnd = active)

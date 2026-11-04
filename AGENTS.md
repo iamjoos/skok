@@ -60,16 +60,20 @@ There is no runner script and no CI. Run the tests that cover the files you touc
 - Popups use `-DPIScale`: layout is in physical pixels via `WindowTheme.Scale(n)`, while fonts still scale with DPI. Rows are `WindowTheme.row_pitch` apart.
 - Controls are created once in `Build()` and rebuilt only when the size, capacity or theme signature changes (`WindowTheme.Refresh()` returns that signature; add any new color to it).
 - Avoid flicker: change text only through `WindowTheme.SetText`/`SetIcon`, which skip unchanged values, and restyle a row only when its cached style state changes (`WindowSearch.Style`, `styles[]`).
-- Colors come from `WindowTheme` (`text`, `muted_text`, `accent_text`, `divider`, `row_selected_*`, ...); never hard-code colors in a module.
+- Colors come from `WindowTheme` (`text`, `muted_text`, `accent_text`, `divider`, `badge_background`, `row_selected_*`, ...); never hard-code colors in a module.
 - Row text is never bold (commit `9900945`). The only bold text is the desktop group headers in window search.
+- Static controls have `CS_PARENTDC`, so window regions (`SetWindowRgn`) don't clip their painting. Rounded badges are therefore cached bitmaps (`WindowTheme.Badge`), with the corners painted in the color behind them.
+- Badge bitmaps must have opaque alpha: an `SS_BITMAP` static draws `COLOR_3DFACE` (`F0F0F0`) pixels of an alpha-less bitmap as transparent. With alpha, the static keeps a copy and returns the previous copy from `STM_SETIMAGE`; `SetBadge` deletes that copy. Never set text on an `SS_BITMAP` static.
+- Gaps between a row's cells are filled by a backdrop (`WindowTheme.AddBackdrop`): a `WS_CLIPSIBLINGS` static at the bottom of the z-order. Restyle it together with the row.
 - The search window hides itself when it loses activation (`OnActivate`). Anything that activates another window, such as a screenshot helper, closes the picker.
 - Peeks and outlines must never activate, move or resize the target window, and must stay click-through.
 
 ### Window search specifics
 
-- Entries are `{hwnd, desktop, desktop_number, here, exe, title, current}` built in `SearchWindows()` (skok.ahk). `Prepare()` precomputes search text; `Filter()` orders or ranks them.
-- With an empty query, `Update()` builds `lines` (desktop header lines plus entry lines). Headers are grouped by `here`, then by desktop number. Ranked (typed) results have no headers and show a right-aligned desktop tag.
+- Entries are `{hwnd, desktop, desktop_number, here, exe, title, current}` built in `SearchWindows()` (skok.ahk). `exe` is the full process name (`Code.exe`), shown after the title; `Prepare()` precomputes search text (without `.exe`) and `Filter()` orders or ranks them.
+- With an empty query, `Update()` builds `lines` (desktop header lines plus entry lines). Headers are grouped by `here`, then by desktop number. Ranked (typed) results have no headers and show a right-aligned desktop badge (`badges[]`; its text is `badges[i].badge.text`).
 - Result numbers, `selected` and Ctrl+number picks index `matches` (windows only); `line_of[index]` maps a window to its row line.
+- The footer (count or overflow status plus key hints) sits right below the last used row and moves with it. Unused rows are styled `"none"` (hidden) so they don't overlap the footer.
 
 ## Behavior invariants
 

@@ -71,7 +71,7 @@ class CycleStrip {
         if !row
             return
         WindowTheme.StyleCell(this.numbers[row], on)
-        WindowTheme.StyleIcon(this.icons[row], on)
+        WindowTheme.StyleFill(this.icons[row], on)
         WindowTheme.StyleCell(this.titles[row], on)
     }
 

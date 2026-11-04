@@ -67,7 +67,7 @@ While cycling, a click-through title strip lists the windows in order and highli
 
 `super + s` lists windows on all virtual desktops, including minimized windows and windows Windows cloaks on inactive desktops. Hidden app windows and tool windows are excluded. Release `super`, then type: characters must appear in order but not adjacent (`rdm` finds `README.md`), and space-separated terms match in any order, against the desktop name, executable and title. For example, `code rdm` finds a window titled `README.md` on the `code` desktop or in `Code.exe`. Search covers windows, not browser tabs or files.
 
-With an empty query, the current window is the top result, so pressing Enter without typing stays in that window. Other windows on the current desktop follow, then the remaining desktops in desktop-number order, with windows in recent-use order within each group. Typing ranks all matches by relevance instead of grouping them. With an empty query, each desktop group starts with a header naming the desktop (for example, `2: code`, or `Desktop 2` if unnamed); ranked results instead show the desktop on the right of each row. The current desktop's name is highlighted, others are muted. Accepting a window on another desktop switches to that desktop first.
+With an empty query, the current window is the top result, so pressing Enter without typing stays in that window. Other windows on the current desktop follow, then the remaining desktops in desktop-number order, with windows in recent-use order within each group. Typing ranks all matches by relevance instead of grouping them. Each row shows the window title followed by its executable, muted. With an empty query, each desktop group starts with a header naming the desktop (for example, `2: code`, or `Desktop 2` if unnamed); ranked results instead show the desktop as a badge on the right of each row. The current desktop's name is highlighted, others are muted. Accepting a window on another desktop switches to that desktop first.
 
 | Key | Action |
 | --- | --- |
@@ -81,7 +81,7 @@ To accept a result by number, hold Ctrl and type its digits, then release Ctrl. 
 
 As you type or navigate, the selected window is previewed in place: a live, click-through thumbnail is drawn over its visible frame and [outlined](#overlays), while the search box keeps keyboard focus. Minimized windows are previewed centered on their display without being restored. Nothing is activated until you accept, so `super + Space` and the Windows Alt+Tab order only see the accepted window, and cancelling changes neither. Disable previews with `preview_search_selection=0` under `[settings]`.
 
-Up to 20 results are shown (fewer if the monitor is small); a footer shows how many are hidden. Clicking another window closes search without returning to the starting window.
+Up to 20 results are shown (fewer if the monitor is small). A footer shows how many windows match, or which results are shown and how many are hidden above and below, along with hints for the main keys. Clicking another window closes search without returning to the starting window.
 
 ### Overlays
 

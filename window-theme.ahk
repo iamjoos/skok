@@ -15,10 +15,14 @@ class WindowTheme {
     static accent_text := ""
     static muted_text := ""
     static divider := ""
+    static badge_background := ""
     static font_face := "Segoe UI"
+    static small_font_size := 9
     static row_font_size := 10
     static search_font_size := 12
     static icons := Map()
+    static badges := Map()
+    static badge_font := 0
 
     static SetMode(mode) {
         if !RegExMatch(mode, "i)^(system|light|dark)$")
@@ -53,6 +57,7 @@ class WindowTheme {
             this.accent_text := this.selected_background
             this.muted_text := "6A6A6A"
             this.divider := "D6D6D6"
+            this.badge_background := "E5E5E5"
             this.row_selected_background := Format("{:02X}{:02X}{:02X}", Round(243 * 0.72 + red * 0.28), Round(243 * 0.72 + green * 0.28), Round(243 * 0.72 + blue * 0.28))
             this.row_selected_text := "1A1A1A"
         } else {
@@ -62,11 +67,12 @@ class WindowTheme {
             this.accent_text := Format("{:02X}{:02X}{:02X}", Min(255, red + 70), Min(255, green + 70), Min(255, blue + 70))
             this.muted_text := "A0A0A0"
             this.divider := "3C3C3C"
+            this.badge_background := "383838"
             this.row_selected_background := Format("{:02X}{:02X}{:02X}", Round(32 * 0.65 + red * 0.35), Round(32 * 0.65 + green * 0.35), Round(32 * 0.65 + blue * 0.35))
             this.row_selected_text := "FFFFFF"
         }
         return this.background ":" this.selected_background ":" this.row_selected_background ":" this.panel_background ":" this.text
-            . ":" this.selected_text ":" this.accent_text ":" this.muted_text ":" this.divider
+            . ":" this.selected_text ":" this.accent_text ":" this.muted_text ":" this.divider ":" this.badge_background
     }
 
     ; Layout is in physical pixels (-DPIScale) to match monitor work areas, but fonts still scale with DPI.
@@ -97,6 +103,85 @@ class WindowTheme {
 
     static AddTextCell(gui, x, y, w, options := "") => gui.AddText("x" x " y" y " w" w " h" this.Scale(30) " +0x4280 +Background" this.background " " options, "")
 
+    ; A fill below all other controls; WS_CLIPSIBLINGS keeps it from painting over cells laid on top of it.
+    static AddBackdrop(gui, x, y, w, h) {
+        cell := gui.AddText("x" x " y" y " w" w " h" h " +0x4000000 +Background" this.background)  ; WS_CLIPSIBLINGS
+        DllCall("SetWindowPos", "Ptr", cell.Hwnd, "Ptr", 1, "Int", 0, "Int", 0, "Int", 0, "Int", 0, "UInt", 0x13)  ; HWND_BOTTOM, no move/size/activate
+        return cell
+    }
+
+    ; SS_BITMAP; SetBadge gives it a pre-drawn badge and sizes it to fit.
+    static AddBadge(gui, y, options := "") => gui.AddText("x0 y" y " w0 h" this.Scale(20) " +0xE " options)
+
+    ; Shows text in a rounded badge right-aligned at right, on the row color behind it; returns its left edge.
+    static SetBadge(cell, text, color, right, selected := false) {
+        badge := this.Badge(text, selected ? this.row_selected_background : this.background, color)
+        if (!cell.HasOwnProp("badge") || cell.badge != badge) {
+            previous := cell.HasOwnProp("badge") ? cell.badge.bitmap : 0
+            cell.badge := badge
+            ; The static shows its own copy of a bitmap with alpha and returns the previous copy.
+            old := SendMessage(0x172, 0, badge.bitmap, cell)  ; STM_SETIMAGE, IMAGE_BITMAP
+            if (old && old != previous)
+                DllCall("DeleteObject", "Ptr", old)
+        }
+        cell.GetPos(&x, , &w, &h)
+        if (x != right - badge.w || w != badge.w || h != badge.h)
+            cell.Move(right - badge.w, , badge.w, badge.h)
+        return right - badge.w
+    }
+
+    ; Static controls ignore window regions when they repaint (CS_PARENTDC), so badges are bitmaps
+    ; with their corners painted in the color behind them. Bitmaps are cached by text and colors.
+    static Badge(text, back, color) {
+        h := this.Scale(20)
+        key := text "`n" back "`n" color "`n" this.badge_background "`n" h
+        if this.badges.Has(key)
+            return this.badges[key]
+        if !this.badge_font
+            this.badge_font := DllCall("CreateFontW", "Int", -Round(this.small_font_size * A_ScreenDPI / 72), "Int", 0, "Int", 0, "Int", 0
+                , "Int", 400, "UInt", 0, "UInt", 0, "UInt", 0, "UInt", 1, "UInt", 0, "UInt", 0, "UInt", 0, "UInt", 0, "Str", this.font_face, "Ptr")  ; FW_NORMAL, DEFAULT_CHARSET
+        dc := DllCall("CreateCompatibleDC", "Ptr", 0, "Ptr")
+        old_font := DllCall("SelectObject", "Ptr", dc, "Ptr", this.badge_font, "Ptr")
+        size := Buffer(8, 0)
+        DllCall("GetTextExtentPoint32W", "Ptr", dc, "Str", text, "Int", StrLen(text), "Ptr", size)
+        w := Max(NumGet(size, 0, "Int") + this.Scale(14), h)
+        info := Buffer(40, 0)
+        NumPut("UInt", 40, "Int", w, "Int", -h, "UShort", 1, "UShort", 32, info)  ; top-down 32bpp BITMAPINFOHEADER
+        bits := 0
+        bitmap := DllCall("CreateDIBSection", "Ptr", dc, "Ptr", info, "UInt", 0, "Ptr*", &bits, "Ptr", 0, "UInt", 0, "Ptr")
+        old_bitmap := DllCall("SelectObject", "Ptr", dc, "Ptr", bitmap, "Ptr")
+        rect := Buffer(16, 0)
+        NumPut("Int", w, "Int", h, rect, 8)
+        brush := DllCall("CreateSolidBrush", "UInt", this.ColorRef(back), "Ptr")
+        DllCall("FillRect", "Ptr", dc, "Ptr", rect, "Ptr", brush)
+        DllCall("DeleteObject", "Ptr", brush)
+        brush := DllCall("CreateSolidBrush", "UInt", this.ColorRef(this.badge_background), "Ptr")
+        old_brush := DllCall("SelectObject", "Ptr", dc, "Ptr", brush, "Ptr")
+        old_pen := DllCall("SelectObject", "Ptr", dc, "Ptr", DllCall("GetStockObject", "Int", 8, "Ptr"), "Ptr")  ; NULL_PEN
+        ; Without a pen, RoundRect leaves out the right and bottom edges.
+        DllCall("RoundRect", "Ptr", dc, "Int", 0, "Int", 0, "Int", w + 1, "Int", h + 1, "Int", this.Scale(8), "Int", this.Scale(8))
+        DllCall("SelectObject", "Ptr", dc, "Ptr", old_pen)
+        DllCall("SelectObject", "Ptr", dc, "Ptr", old_brush)
+        DllCall("DeleteObject", "Ptr", brush)
+        DllCall("SetBkMode", "Ptr", dc, "Int", 1)  ; TRANSPARENT
+        DllCall("SetTextColor", "Ptr", dc, "UInt", this.ColorRef(color))
+        DllCall("DrawTextW", "Ptr", dc, "Str", text, "Int", -1, "Ptr", rect, "UInt", 0x825)  ; DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX
+        DllCall("GdiFlush")
+        ; Without alpha the static makes COLOR_3DFACE pixels transparent; opaque alpha makes it blend instead.
+        Loop w * h
+            NumPut("UChar", 0xFF, bits, A_Index * 4 - 1)
+        DllCall("SelectObject", "Ptr", dc, "Ptr", old_font)
+        DllCall("SelectObject", "Ptr", dc, "Ptr", old_bitmap)
+        DllCall("DeleteDC", "Ptr", dc)
+        return this.badges[key] := {bitmap: bitmap, w: w, h: h, text: text}
+    }
+
+    ; "RRGGBB" to a 0x00BBGGRR COLORREF.
+    static ColorRef(rgb) {
+        rgb := Integer("0x" rgb)
+        return (rgb & 0xFF) << 16 | rgb & 0xFF00 | rgb >> 16
+    }
+
     ; Rendered width of text in the control's current font.
     static TextWidth(cell, text) {
         hdc := DllCall("GetDC", "Ptr", cell.Hwnd, "Ptr")
@@ -119,7 +204,8 @@ class WindowTheme {
             SendMessage(0x170, hicon, 0, cell)        ; STM_SETICON
     }
 
-    static StyleIcon(cell, selected) {
+    ; For cells without text, such as icons and row backdrops.
+    static StyleFill(cell, selected) {
         cell.Opt("+Background" (selected ? this.row_selected_background : this.background))
         cell.Redraw()
     }
@@ -171,8 +257,7 @@ class WindowTheme {
     static Frame(hwnd) {
         corner := 2  ; DWMWCP_ROUND
         DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hwnd, "UInt", 33, "Int*", &corner, "UInt", 4)  ; DWMWA_WINDOW_CORNER_PREFERENCE
-        rgb := Integer("0x" this.selected_background)
-        colorref := (rgb & 0xFF) << 16 | rgb & 0xFF00 | rgb >> 16
+        colorref := this.ColorRef(this.selected_background)
         DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hwnd, "UInt", 34, "UInt*", &colorref, "UInt", 4)  ; DWMWA_BORDER_COLOR
     }
 

@@ -77,8 +77,8 @@ try {
     AssertEqual(WindowSearch.matches[1].hwnd, remote)
     ; Ranked results tag each window with its desktop instead of grouping.
     AssertEqual(WindowSearch.lines.Length, 1)
-    Assert(WindowSearch.labels[1].Visible && !WindowSearch.headers[1].Visible, "Ranked result had no desktop tag")
-    AssertEqual(WindowSearch.labels[1].Text, DesktopLabel(away))
+    Assert(WindowSearch.badges[1].Visible && !WindowSearch.headers[1].Visible, "Ranked result had no desktop badge")
+    AssertEqual(WindowSearch.badges[1].badge.text, DesktopLabel(away))
     WindowSearch.Pick(1)
     AssertEqual(vd.Current(), away)
     Assert(WinWaitActive(remote, , 3), "Picking a remote window did not focus it")
