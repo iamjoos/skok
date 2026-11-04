@@ -63,7 +63,8 @@ try {
             Assert(actual_left = expected_left && actual_top = expected_top
                 && actual_right = expected_right && actual_bottom = expected_bottom, "Search opened on the wrong display: " display)
             WinGetPos(&picker_x, &picker_y, , , WindowSearch.window)
-            Assert(SendMessage(0x171, 0, 0, WindowSearch.icons[1]) != 0, "Search row 1 had no icon")
+            ; Row 1 is the current desktop's header.
+            Assert(SendMessage(0x171, 0, 0, WindowSearch.icons[2]) != 0, "Search row 2 had no icon")
             WindowSearch.Move(1)
             AssertPeek(second)
             WinGetPos(&peek_x, &peek_y, , , WindowSearch.window)

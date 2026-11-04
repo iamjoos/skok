@@ -2,8 +2,9 @@
 #Include ..\window-search.ahk
 #Include lib.ahk
 
-Entry(hwnd, desktop, current := false, text := "same") {
-    entry := {hwnd: hwnd, desktop: desktop, here: desktop != "", current: current, exe: "", title: text}
+Entry(hwnd, desktop, current := false, text := "same", number := 0) {
+    entry := {hwnd: hwnd, desktop: desktop, desktop_number: desktop = "" ? 1 : number
+        , here: desktop != "" && number = 0, current: current, exe: "", title: text}
     WindowSearch.Prepare(entry)
     return entry
 }
@@ -30,6 +31,15 @@ try {
     AssertOrder([Entry(1, ""), Entry(2, "app")], "", [2, 1])
     AssertOrder([Entry(1, "", true)], "", [1])
     AssertOrder([], "", [])
+    grouped := [Entry(1, "two", false, "same", 2), Entry(2, "one", false, "same", 1)
+        , Entry(3, "two", false, "same", 2), Entry(4, "home", true), Entry(5, "home")
+        , Entry(6, "one", false, "same", 1)]
+    AssertOrder(grouped, "", [4, 5, 2, 6, 1, 3])
+    AssertOrder(grouped, "   ", [4, 5, 2, 6, 1, 3])
+    AssertOrder(grouped, "same", [1, 2, 3, 4, 5, 6])
+    ; Equal desktop names still represent distinct desktops, including with no local results.
+    AssertOrder([Entry(1, "duplicate", false, "same", 2), Entry(2, "duplicate", false, "same", 1)
+        , Entry(3, "duplicate", false, "same", 2)], "", [2, 1, 3])
     AssertOrder([Entry(1, "app", false, "needle"), Entry(2, "", true, "other")], "needle", [1])
     ; The prefilter must reject an out-of-order or overlong term, but keep gapped and multi-term matches.
     AssertOrder([Entry(1, "", false, "ab"), Entry(2, "", false, "ba")], "abb", [])

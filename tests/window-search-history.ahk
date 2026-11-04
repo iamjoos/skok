@@ -116,6 +116,8 @@ try {
     WindowSearch.Show(entries, ActivateWindow)
     WindowSearch.Move(1)
     vd.names[0] := "here"
+    AssertEqual(DesktopLabel(0), "1: here")
+    AssertEqual(DesktopLabel(1), "Desktop 2")
     GoToDesktop({name: "here"})
     Assert(!WindowSearch.active && !cycle_session && WinActive(origin), "Current-desktop shortcut did not cancel search to origin")
     ; picked lives on desktop 2 of the fake, so switching there focuses it.

@@ -3,7 +3,7 @@
 #Include %A_LineFile%\..\window-outline.ahk
 #Include %A_LineFile%\..\window-peek.ahk
 
-; A focusable picker that fuzzy-filters window entries ({hwnd, desktop, here, exe, title, current}) as you type.
+; A focusable picker that fuzzy-filters window entries ({hwnd, desktop, desktop_number, here, exe, title, current}) as you type.
 class WindowSearch {
     static window := 0
     static edit := 0
@@ -12,13 +12,20 @@ class WindowSearch {
     static icons := []
     static labels := []
     static titles := []
+    static headers := []
+    static rules := []
     static styles := []
     static size := ""
+    static width := 0
     static capacity := 0
     static rows_top := 0
     static height := 0
     static entries := []
     static matches := []
+    static lines := []
+    static line_of := []
+    static grouped := true
+    static layout := ""
     static selected := 0
     static digits := ""
     static first := 1
@@ -116,6 +123,19 @@ class WindowSearch {
         if this.closing
             return
         this.matches := this.Filter(this.entries, this.edit.Value)
+        this.grouped := Trim(this.edit.Value, " ") = ""
+        ; An empty query lists matches by desktop, so each group gets a header line.
+        this.lines := [], this.line_of := []
+        group := ""
+        for index, entry in this.matches {
+            key := entry.here ? "here" : entry.desktop_number ":" entry.desktop
+            if (this.grouped && key !== group) {
+                group := key
+                this.lines.Push({header: entry.desktop, here: entry.here})
+            }
+            this.lines.Push({index: index})
+            this.line_of.Push(this.lines.Length)
+        }
         this.selected := this.matches.Length ? 1 : 0
         this.first := 1
         this.Render()
@@ -123,28 +143,51 @@ class WindowSearch {
     }
 
     static Render() {
-        rows := Min(this.matches.Length, this.capacity)
-        if (this.selected && this.selected < this.first)
-            this.first := this.selected
-        else if (this.selected >= this.first + rows)
-            this.first := this.selected - rows + 1
+        lines := this.lines
+        rows := Min(lines.Length, this.capacity)
+        if this.selected {
+            line := this.line_of[this.selected]
+            ; Keep a group's header in view along with its first window.
+            top := line > 1 && lines[line - 1].HasOwnProp("header") ? line - 1 : line
+            if (top < this.first)
+                this.first := top
+            else if (line >= this.first + rows)
+                this.first := line - rows + 1
+        }
+        ; Grouped titles take the full width; ranked results leave room for the desktop tag.
+        if (this.layout !== this.grouped) {
+            this.layout := this.grouped
+            s := ObjBindMethod(WindowTheme, "Scale")
+            title_w := this.width - s(76) - (this.grouped ? s(8) : s(166))
+            for _, title in this.titles
+                title.Move(, , title_w)
+        }
+        first_entry := last_entry := 0
         Loop rows {
-            index := this.first + A_Index - 1
+            line := lines[this.first + A_Index - 1]
+            if line.HasOwnProp("header") {
+                this.SetHeader(A_Index, line.header)
+                this.Style(A_Index, "header", false, line.here)
+                continue
+            }
+            index := line.index
             entry := this.matches[index]
+            first_entry := first_entry || index
+            last_entry := index
             WindowTheme.SetText(this.numbers[A_Index], index)
             WindowTheme.SetIcon(this.icons[A_Index], entry.icon)
-            WindowTheme.SetText(this.labels[A_Index], entry.desktop)
+            if !this.grouped
+                WindowTheme.SetText(this.labels[A_Index], entry.desktop)
             WindowTheme.SetText(this.titles[A_Index], entry.title)
-            this.Style(A_Index, index = this.selected, entry.here)
+            this.Style(A_Index, this.grouped ? "entry" : "tagged", index = this.selected, entry.here)
         }
         ; Rows past the matches are clipped by the window height.
         height := this.rows_top + rows * WindowTheme.row_pitch + (rows ? WindowTheme.Scale(4) : 0)
-        if (this.matches.Length > rows) {
-            above := this.first - 1
-            last := this.first + rows - 1
-            below := this.matches.Length - last
+        if (lines.Length > rows && first_entry) {
+            above := first_entry - 1
+            below := this.matches.Length - last_entry
             WindowTheme.SetText(this.overflow, (above ? "↑ " above " above   ·   " : "")
-                . this.first "–" last " of " this.matches.Length
+                . first_entry "–" last_entry " of " this.matches.Length
                 . (below ? "   ·   ↓ " below " below" : ""))
             this.overflow.Visible := true
             height += WindowTheme.Scale(24)
@@ -159,16 +202,45 @@ class WindowSearch {
         }
     }
 
-    ; Restyling only changed rows avoids flicker while typing. Desktop labels are muted for other desktops.
-    static Style(row, selected, here) {
-        state := selected ":" here
-        if (this.styles[row] = state)
+    ; A row is a desktop header, a window ("entry") or a window with its desktop tag ("tagged").
+    ; Restyling only changed rows avoids flicker while typing. Desktop text is muted for other desktops.
+    static Style(row, kind, selected, here) {
+        state := kind ":" selected ":" here
+        previous := this.styles[row]
+        if (previous = state)
             return
         this.styles[row] := state
+        if (SubStr(previous, 1, InStr(previous ":", ":") - 1) != kind) {
+            header := kind = "header"
+            this.headers[row].Visible := header
+            this.rules[row].Visible := header
+            this.numbers[row].Visible := !header
+            this.icons[row].Visible := !header
+            this.titles[row].Visible := !header
+            this.labels[row].Visible := kind = "tagged"
+        }
+        color := here ? WindowTheme.accent_text : WindowTheme.muted_text
+        if (kind = "header") {
+            this.headers[row].SetFont("bold c" color)
+            return
+        }
         WindowTheme.StyleIcon(this.icons[row], selected)
         WindowTheme.StyleCell(this.numbers[row], selected)
-        WindowTheme.StyleCell(this.labels[row], selected, here ? WindowTheme.accent_text : WindowTheme.muted_text)
+        WindowTheme.StyleCell(this.labels[row], selected, color)
         WindowTheme.StyleCell(this.titles[row], selected)
+    }
+
+    ; The divider starts just after the header text.
+    static SetHeader(row, text) {
+        cell := this.headers[row]
+        if (cell.Text == text)
+            return
+        cell.Text := text
+        s := ObjBindMethod(WindowTheme, "Scale")
+        cell.GetPos(&x)
+        w := Min(WindowTheme.TextWidth(cell, text) + s(4), this.width - x - s(24))
+        cell.Move(, , w)
+        this.rules[row].Move(x + w + s(8), , Max(0, this.width - x - w - s(24)))
     }
 
     static OnKeyDown(vk, lParam, msg, hwnd) {
@@ -237,7 +309,7 @@ class WindowSearch {
             this.Hide()
     }
 
-    ; Empty queries put the current window first, then windows on the current desktop; otherwise use stable score ties.
+    ; Empty queries group by desktop (current first), preserving recent-use order within each; typing ranks by score.
     static Filter(entries, query) {
         if (Trim(query, " ") = "") {
             matches := [], elsewhere := []
@@ -246,8 +318,12 @@ class WindowSearch {
                     matches.InsertAt(1, entry)
                 else if entry.here
                     matches.Push(entry)
-                else
-                    elsewhere.Push(entry)
+                else {
+                    i := elsewhere.Length
+                    while (i && elsewhere[i].desktop_number > entry.desktop_number)
+                        i--
+                    elsewhere.InsertAt(i + 1, entry)
+                }
             }
             matches.Push(elsewhere*)
             return matches
@@ -399,19 +475,25 @@ class WindowSearch {
         this.rows_top := s(8) + panel_h + s(8)
 
         this.window.SetFont("s" WindowTheme.row_font_size " norm c" WindowTheme.text, WindowTheme.font_face)
-        this.numbers := [], this.icons := [], this.labels := [], this.titles := [], this.styles := []
+        this.numbers := [], this.icons := [], this.labels := [], this.titles := [], this.headers := [], this.rules := [], this.styles := []
         Loop capacity {
             y := this.rows_top + (A_Index - 1) * WindowTheme.row_pitch
             this.numbers.Push(WindowTheme.AddNumberCell(this.window, y))
             this.icons.Push(WindowTheme.AddIconCell(this.window, y))
-            this.labels.Push(WindowTheme.AddTextCell(this.window, s(76), y, s(104)))
-            this.titles.Push(WindowTheme.AddTextCell(this.window, s(180), y, width - s(188)))
+            this.titles.Push(WindowTheme.AddTextCell(this.window, s(76), y, width - s(84)))
+            this.labels.Push(WindowTheme.AddTextCell(this.window, width - s(166), y, s(158), "+0x2 +Hidden"))  ; SS_RIGHT
+            this.window.SetFont("bold")
+            this.headers.Push(WindowTheme.AddTextCell(this.window, s(16), y, s(8), "+Hidden"))
+            this.window.SetFont("norm")
+            this.rules.Push(this.window.AddText("x" s(16) " y" (y + s(15)) " w0 h" Max(1, s(1)) " +Hidden +Background" WindowTheme.divider))
             this.styles.Push("")
         }
         this.window.SetFont("norm c" WindowTheme.muted_text)
         this.overflow := this.window.AddText("x" s(8) " y" (this.rows_top + capacity * WindowTheme.row_pitch)
             . " w" (width - s(16)) " h" s(24) " +0x281 +Hidden +Background" WindowTheme.background, "")
         this.size := width ":" capacity ":" theme
+        this.width := width
+        this.layout := ""
         this.capacity := capacity
     }
 }

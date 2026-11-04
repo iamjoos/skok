@@ -592,7 +592,7 @@ SearchWindows(*) {
             continue
         if !labels.Has(number)
             labels[number] := DesktopLabel(number)
-        try entry := {hwnd: hwnd, desktop: labels[number], here: number = here, title: WinGetTitle(hwnd)
+        try entry := {hwnd: hwnd, desktop: labels[number], desktop_number: number, here: number = here, title: WinGetTitle(hwnd)
             , exe: RegExReplace(WinGetProcessName(hwnd), "i)\.exe$"), current: hwnd = active}
         catch
             continue
@@ -608,7 +608,10 @@ SearchWindows(*) {
     WindowSearch.Show(entries, FocusWindow, origin)
 }
 
-DesktopLabel(number) => vd.Name(number) || "Desktop " (number + 1)
+DesktopLabel(number) {
+    name := vd.Name(number)
+    return name != "" ? (number + 1) ": " name : "Desktop " (number + 1)
+}
 
 IsCloaked(hwnd) => CloakFlags(hwnd) != 0
 

@@ -49,9 +49,22 @@ try {
         for _, entry in WindowSearch.entries {
             if (entry.hwnd = remote) {
                 AssertEqual(entry.desktop, DesktopLabel(away))
+                AssertEqual(entry.desktop_number, away)
                 Assert(!entry.here, "Other-desktop result was marked as local")
             }
         }
+        ; An empty query names each desktop once, in a header above its windows.
+        headers := 0
+        for i, line in WindowSearch.lines {
+            if (i > WindowSearch.capacity)
+                break
+            if !line.HasOwnProp("header")
+                continue
+            headers++
+            Assert(WindowSearch.headers[i].Visible && !WindowSearch.icons[i].Visible, "Desktop header row also showed a window")
+            AssertEqual(WindowSearch.headers[i].Text, WindowSearch.matches[WindowSearch.lines[i + 1].index].desktop)
+        }
+        Assert(headers >= 2, "Empty search did not group windows by desktop")
         WindowSearch.Cancel()
         AssertEqual(vd.Current(), home)
         Assert(WinActive(origin), "Cancelling search did not restore the origin")
@@ -62,6 +75,10 @@ try {
     WindowSearch.Update()
     AssertEqual(WindowSearch.matches.Length, 1)
     AssertEqual(WindowSearch.matches[1].hwnd, remote)
+    ; Ranked results tag each window with its desktop instead of grouping.
+    AssertEqual(WindowSearch.lines.Length, 1)
+    Assert(WindowSearch.labels[1].Visible && !WindowSearch.headers[1].Visible, "Ranked result had no desktop tag")
+    AssertEqual(WindowSearch.labels[1].Text, DesktopLabel(away))
     WindowSearch.Pick(1)
     AssertEqual(vd.Current(), away)
     Assert(WinWaitActive(remote, , 3), "Picking a remote window did not focus it")

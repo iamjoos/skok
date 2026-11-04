@@ -14,6 +14,7 @@ class WindowTheme {
     static row_selected_text := ""
     static accent_text := ""
     static muted_text := ""
+    static divider := ""
     static font_face := "Segoe UI"
     static row_font_size := 10
     static search_font_size := 12
@@ -51,6 +52,7 @@ class WindowTheme {
             this.text := "1A1A1A"
             this.accent_text := this.selected_background
             this.muted_text := "6A6A6A"
+            this.divider := "D6D6D6"
             this.row_selected_background := Format("{:02X}{:02X}{:02X}", Round(243 * 0.72 + red * 0.28), Round(243 * 0.72 + green * 0.28), Round(243 * 0.72 + blue * 0.28))
             this.row_selected_text := "1A1A1A"
         } else {
@@ -59,11 +61,12 @@ class WindowTheme {
             this.text := "F0F0F0"
             this.accent_text := Format("{:02X}{:02X}{:02X}", Min(255, red + 70), Min(255, green + 70), Min(255, blue + 70))
             this.muted_text := "A0A0A0"
+            this.divider := "3C3C3C"
             this.row_selected_background := Format("{:02X}{:02X}{:02X}", Round(32 * 0.65 + red * 0.35), Round(32 * 0.65 + green * 0.35), Round(32 * 0.65 + blue * 0.35))
             this.row_selected_text := "FFFFFF"
         }
         return this.background ":" this.selected_background ":" this.row_selected_background ":" this.panel_background ":" this.text
-            . ":" this.selected_text ":" this.accent_text ":" this.muted_text
+            . ":" this.selected_text ":" this.accent_text ":" this.muted_text ":" this.divider
     }
 
     ; Layout is in physical pixels (-DPIScale) to match monitor work areas, but fonts still scale with DPI.
@@ -92,7 +95,18 @@ class WindowTheme {
     ; SS_ICON | SS_CENTERIMAGE centers the icon in the row highlight without stretching it.
     static AddIconCell(gui, y) => gui.AddText("x" this.Scale(44) " y" y " w" this.Scale(32) " h" this.Scale(30) " +0x203 +Background" this.background)
 
-    static AddTextCell(gui, x, y, w) => gui.AddText("x" x " y" y " w" w " h" this.Scale(30) " +0x4280 +Background" this.background, "")
+    static AddTextCell(gui, x, y, w, options := "") => gui.AddText("x" x " y" y " w" w " h" this.Scale(30) " +0x4280 +Background" this.background " " options, "")
+
+    ; Rendered width of text in the control's current font.
+    static TextWidth(cell, text) {
+        hdc := DllCall("GetDC", "Ptr", cell.Hwnd, "Ptr")
+        old := DllCall("SelectObject", "Ptr", hdc, "Ptr", SendMessage(0x31, 0, 0, cell), "Ptr")  ; WM_GETFONT
+        size := Buffer(8, 0)
+        DllCall("GetTextExtentPoint32W", "Ptr", hdc, "Str", text, "Int", StrLen(text), "Ptr", size)
+        DllCall("SelectObject", "Ptr", hdc, "Ptr", old)
+        DllCall("ReleaseDC", "Ptr", cell.Hwnd, "Ptr", hdc)
+        return NumGet(size, 0, "Int")
+    }
 
     ; Static controls repaint on every WM_SETTEXT, even when the text is unchanged.
     static SetText(cell, text) {
